@@ -21,7 +21,12 @@ Both invocation forms work, from any working directory:
     python -m scripts.run_smoke --backend mock
 
 Run on Kaggle against a real model (the actual gate):
+    python scripts/run_smoke.py --backend hf   --model Qwen/Qwen2.5-7B-Instruct
     python scripts/run_smoke.py --backend vllm --model Qwen/Qwen2.5-7B-Instruct
+
+Prefer ``--backend hf`` for the gate: it is only ~250 generations, so vLLM's throughput buys
+nothing, and a pinned vLLM hard-fails on any model config newer than itself. Use ``--backend
+vllm`` for the full grid, where throughput is the whole point.
 """
 
 from __future__ import annotations
@@ -38,7 +43,7 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
 from src.asch.analyze import baseline_error_rate, format_table, independence_ratios, tabulate  # noqa: E402
-from src.asch.backends import APIBackend, MockBackend, VLLMBackend  # noqa: E402
+from src.asch.backends import APIBackend, HFBackend, MockBackend, VLLMBackend  # noqa: E402
 from src.asch.config import GridConfig, Kinship, Privacy, Unanimity  # noqa: E402
 from src.asch.items import generate_perceptual_bank, load_bank  # noqa: E402
 from src.asch.runner import load_results, run_grid  # noqa: E402
@@ -47,9 +52,11 @@ PASS_LOW, PASS_HIGH = 0.05, 0.70
 MAX_BASELINE_ERROR = 0.10
 
 
-def build_backend(kind: str, model: str, conformity_prob: float):
+def build_backend(kind: str, model: str, conformity_prob: float, dtype: str = "float16"):
     if kind == "mock":
         return MockBackend(conformity_prob=conformity_prob)
+    if kind == "hf":
+        return HFBackend(model=model, dtype=dtype)
     if kind == "vllm":
         return VLLMBackend(model=model)
     if kind == "api":
@@ -59,8 +66,9 @@ def build_backend(kind: str, model: str, conformity_prob: float):
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--backend", choices=["mock", "vllm", "api"], default="mock")
+    ap.add_argument("--backend", choices=["mock", "hf", "vllm", "api"], default="mock")
     ap.add_argument("--model", default="mock-7b")
+    ap.add_argument("--dtype", default="float16", help="hf backend only")
     ap.add_argument("--confederate-model", default=None, help="defaults to --model (same family)")
     # Defaults anchor to the repo root, not the working directory, so the script behaves the
     # same whether it is run from the repo, from /kaggle/working, or from a notebook.
@@ -89,7 +97,7 @@ def main() -> None:
     specs = grid.expand(items)
     print(f"[smoke] {len(items)} items -> {len(specs)} trials on {args.model} ({args.backend})")
 
-    backend = build_backend(args.backend, args.model, args.mock_conformity)
+    backend = build_backend(args.backend, args.model, args.mock_conformity, args.dtype)
     try:
         executed = run_grid(specs, item_map, backend, args.out, resume=not args.no_resume)
     finally:

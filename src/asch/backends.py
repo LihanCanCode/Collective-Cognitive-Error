@@ -186,6 +186,88 @@ class VLLMBackend(Backend):
 
 
 # --------------------------------------------------------------------------------------
+# Transformers (dependable fallback)
+# --------------------------------------------------------------------------------------
+
+
+class HFBackend(Backend):
+    """Open-weights inference via plain ``transformers``.
+
+    Slower than vLLM, but it tracks new model configs as soon as ``transformers`` supports them,
+    whereas a pinned vLLM will hard-fail on any architecture newer than itself (Qwen2.5's
+    ``rope_scaling`` breaks vLLM 0.6.3 outright). The smoke test is ~250 generations, where
+    throughput does not matter and reliability does. Use ``VLLMBackend`` for the full grid.
+
+    ``device_map="auto"`` shards across both Kaggle T4s, which is what makes a 7B in fp16 fit.
+    """
+
+    name = "hf"
+
+    def __init__(self, model: str, *, dtype: str = "float16", max_new_tokens: int = 512) -> None:
+        import torch  # noqa: PLC0415 - lazy: no GPU deps on a laptop
+        from transformers import AutoModelForCausalLM, AutoTokenizer  # noqa: PLC0415
+
+        self.model_name = model
+        self.max_new_tokens = max_new_tokens
+        self._torch = torch
+        self._tokenizer = AutoTokenizer.from_pretrained(model, trust_remote_code=True)
+
+        # transformers renamed `torch_dtype` -> `dtype`. Kaggle and Colab do not run the same
+        # version, and getting this wrong costs a full model download to find out, so accept
+        # either rather than pinning an assumption about the environment.
+        kwargs = {"device_map": "auto", "trust_remote_code": True}
+        try:
+            self._model = AutoModelForCausalLM.from_pretrained(
+                model, dtype=getattr(torch, dtype), **kwargs
+            )
+        except TypeError:
+            self._model = AutoModelForCausalLM.from_pretrained(
+                model, torch_dtype=getattr(torch, dtype), **kwargs
+            )
+        self._model.eval()
+        if self._tokenizer.pad_token_id is None:
+            self._tokenizer.pad_token = self._tokenizer.eos_token
+
+    def generate(
+        self,
+        messages: list[Message],
+        *,
+        model: str,
+        temperature: float = 0.0,
+        max_tokens: int = 512,
+        seed: int | None = None,
+        oracle: str | None = None,  # ignored: real models must never see ground truth
+    ) -> Generation:
+        torch = self._torch
+        if seed is not None:
+            torch.manual_seed(seed)
+
+        text = self._tokenizer.apply_chat_template(
+            messages, tokenize=False, add_generation_prompt=True
+        )
+        inputs = self._tokenizer(text, return_tensors="pt").to(self._model.device)
+
+        with torch.no_grad():
+            out = self._model.generate(
+                **inputs,
+                max_new_tokens=min(max_tokens, self.max_new_tokens),
+                do_sample=temperature > 0,
+                temperature=temperature if temperature > 0 else None,
+                top_p=0.95 if temperature > 0 else None,
+                pad_token_id=self._tokenizer.pad_token_id,
+            )
+
+        # Decode only the newly generated tokens; keeping the prompt would poison the parser,
+        # which searches the whole string for "Answer: X".
+        completion = out[0][inputs["input_ids"].shape[-1] :]
+        return Generation(
+            text=self._tokenizer.decode(completion, skip_special_tokens=True).strip(),
+            backend=self.name,
+            model=model,
+        )
+
+
+# --------------------------------------------------------------------------------------
 # Hosted APIs (frontier replication)
 # --------------------------------------------------------------------------------------
 

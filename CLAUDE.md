@@ -95,6 +95,24 @@ Kaggle/Colab, not on this machine.
 
 ---
 
+## 3b. Backend choice — learned the hard way
+
+| Backend | Use for | Why |
+|---|---|---|
+| `mock` | local dev, CI | Deterministic, offline, no GPU. Whole pipeline testable on a laptop. |
+| `hf` (transformers) | **the smoke-test gate** | Only ~250 generations, so throughput is irrelevant and reliability is everything. Preinstalled on Kaggle. |
+| `vllm` | the full Study 1 grid | Throughput is the entire point there (~4,300 trials/model). |
+| `api` | W4 frontier replication | — |
+
+⚠️ **Do not pin vLLM low.** `vllm==0.6.3` cannot parse Qwen2.5's `rope_scaling` and dies on a bare
+`AssertionError` inside `_get_and_verify_max_len`. Burned one Kaggle cycle on this. When vLLM comes
+back for the grid, install a current release and verify against one model before launching.
+
+`HFBackend` accepts either `dtype=` or `torch_dtype=` in `from_pretrained` — transformers renamed it
+and Kaggle/Colab do not run the same version.
+
+---
+
 ## 4. Environment
 
 - **Local (this machine):** Windows, Python 3.14, no GPU. Has `transformers`, `pandas`, `numpy`, `scipy`, `pytest`. Missing `datasets`, `vllm`, `statsmodels`.
@@ -142,7 +160,7 @@ Kaggle/Colab, not on this machine.
 
 **Next up (in order):**
 1. ⬜ **Run the day-3 smoke test on a real model** (Kaggle, Qwen2.5-7B-Instruct). THE gate.
-   `python -m scripts.run_smoke --backend vllm --model Qwen/Qwen2.5-7B-Instruct`
+   `python scripts/run_smoke.py --backend hf --model Qwen/Qwen2.5-7B-Instruct`
    Pass = conformity rate roughly 5–70% **and** baseline error <10%. The script prints an
    explicit PASS/FAIL verdict with the reason. At ~0% or ~100%, retune item difficulty before
    building anything further.

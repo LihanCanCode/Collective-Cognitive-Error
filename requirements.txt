@@ -10,9 +10,12 @@ statsmodels>=0.14        # mixed-effects logistic regression for the main grid
 # Data acquisition (Kaggle/Colab only)
 datasets>=2.19
 
-# Open-weights inference (GPU only — do not install on a laptop)
-# vllm>=0.6
+# Open-weights inference (GPU only — do not install on a laptop).
+# transformers is the dependable path and is preinstalled on Kaggle/Colab; it is what the smoke
+# test uses. vLLM is for the full grid only, where throughput matters — do NOT pin it low, older
+# releases hard-fail on newer model configs (0.6.3 cannot parse Qwen2.5's rope_scaling).
 # transformers>=4.44
+# vllm>=0.8
 
 # Frontier replication (install only the providers actually used)
 # anthropic>=0.40
