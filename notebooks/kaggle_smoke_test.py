@@ -1,5 +1,8 @@
 """Kaggle / Colab smoke-test runner — THE go/no-go gate.
 
+>>> Prefer ``kaggle_smoke_test.ipynb`` in this directory — it is the maintained version.
+>>> This file is a plain-text reference for reading the cells outside a notebook.
+
 Paste each block below into a separate notebook cell, in order.
 Kaggle: Settings -> Accelerator -> GPU T4 x2, and Internet -> ON.
 

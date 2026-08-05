@@ -16,23 +16,32 @@ Interpreting the result:
   * ~0%   -> items too easy / model too robust: raise difficulty, add a hard tier
   * ~100% -> model has no independent judgement: lower difficulty or change model
 
-Run locally against the mock backend to verify the pipeline:
+Both invocation forms work, from any working directory:
+    python scripts/run_smoke.py --backend mock
     python -m scripts.run_smoke --backend mock
 
 Run on Kaggle against a real model (the actual gate):
-    python -m scripts.run_smoke --backend vllm --model Qwen/Qwen2.5-7B-Instruct
+    python scripts/run_smoke.py --backend vllm --model Qwen/Qwen2.5-7B-Instruct
 """
 
 from __future__ import annotations
 
 import argparse
+import sys
 from pathlib import Path
 
-from src.asch.analyze import baseline_error_rate, format_table, independence_ratios, tabulate
-from src.asch.backends import APIBackend, MockBackend, VLLMBackend
-from src.asch.config import GridConfig, Kinship, Privacy, Unanimity
-from src.asch.items import generate_perceptual_bank, load_bank
-from src.asch.runner import load_results, run_grid
+# Put the repo root on sys.path so `src.asch` resolves regardless of how this was invoked or
+# what the working directory is. Running `python scripts/run_smoke.py` otherwise puts only
+# scripts/ on the path, and `python -m` depends on cwd -- both fail in a notebook.
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
+from src.asch.analyze import baseline_error_rate, format_table, independence_ratios, tabulate  # noqa: E402
+from src.asch.backends import APIBackend, MockBackend, VLLMBackend  # noqa: E402
+from src.asch.config import GridConfig, Kinship, Privacy, Unanimity  # noqa: E402
+from src.asch.items import generate_perceptual_bank, load_bank  # noqa: E402
+from src.asch.runner import load_results, run_grid  # noqa: E402
 
 PASS_LOW, PASS_HIGH = 0.05, 0.70
 MAX_BASELINE_ERROR = 0.10
@@ -53,8 +62,10 @@ def main() -> None:
     ap.add_argument("--backend", choices=["mock", "vllm", "api"], default="mock")
     ap.add_argument("--model", default="mock-7b")
     ap.add_argument("--confederate-model", default=None, help="defaults to --model (same family)")
-    ap.add_argument("--items", type=Path, default=Path("data/smoke_items.jsonl"))
-    ap.add_argument("--out", type=Path, default=Path("results/smoke.jsonl"))
+    # Defaults anchor to the repo root, not the working directory, so the script behaves the
+    # same whether it is run from the repo, from /kaggle/working, or from a notebook.
+    ap.add_argument("--items", type=Path, default=_REPO_ROOT / "data" / "smoke_items.jsonl")
+    ap.add_argument("--out", type=Path, default=_REPO_ROOT / "results" / "smoke.jsonl")
     ap.add_argument("--n-items", type=int, default=50)
     ap.add_argument("--mock-conformity", type=float, default=0.30,
                     help="mock backend only: ground-truth rate the analysis should recover")

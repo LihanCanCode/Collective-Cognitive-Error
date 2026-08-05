@@ -1,21 +1,31 @@
 """Generate the 50-item perceptual smoke-test bank.
 
 Deterministic given the seed, so the bank is reproducible from the seed alone.
+
+Both invocation forms work, from any working directory:
+    python scripts/make_smoke_bank.py
+    python -m scripts.make_smoke_bank
 """
 
 from __future__ import annotations
 
 import argparse
+import sys
 from pathlib import Path
 
-from src.asch.items import generate_perceptual_bank, save_bank
+# See run_smoke.py -- keeps imports working regardless of invocation form or cwd.
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
+from src.asch.items import generate_perceptual_bank, save_bank  # noqa: E402
 
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--n", type=int, default=50)
     ap.add_argument("--seed", type=int, default=20260806)
-    ap.add_argument("--out", type=Path, default=Path("data/smoke_items.jsonl"))
+    ap.add_argument("--out", type=Path, default=_REPO_ROOT / "data" / "smoke_items.jsonl")
     args = ap.parse_args()
 
     items = generate_perceptual_bank(n=args.n, seed=args.seed)
