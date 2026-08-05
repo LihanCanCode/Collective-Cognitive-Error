@@ -20,10 +20,15 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .backends import Backend
-from .config import TrialSpec, Unanimity
+from .config import ConfederateStyle, TrialSpec, Unanimity
 from .items import Item
 from .parsing import classify_stance, confederate_complied, effort_proxy, parse_answer
-from .prompts import assign_confederate_answers, confederate_messages, naive_messages
+from .prompts import (
+    assign_confederate_answers,
+    bare_confederate_text,
+    confederate_messages,
+    naive_messages,
+)
 
 
 @dataclass
@@ -87,22 +92,28 @@ def run_trial(spec: TrialSpec, item: Item, backend: Backend) -> TrialResult:
     all_complied = True
 
     for position, answer_key in enumerate(assigned, start=1):
-        gen = backend.generate(
-            confederate_messages(item, answer_key, position),
-            model=spec.confederate_model,
-            temperature=spec.temperature,
-            max_tokens=200,
-            seed=_seed_for(spec, position),
-        )
-        complied = confederate_complied(gen.text, answer_key)
+        if spec.confederate_style is ConfederateStyle.BARE:
+            # Asch's confederates stated a line and nothing more. No model call needed, and
+            # compliance is guaranteed by construction rather than merely checked.
+            text = bare_confederate_text(answer_key)
+        else:
+            text = backend.generate(
+                confederate_messages(item, answer_key, position),
+                model=spec.confederate_model,
+                temperature=spec.temperature,
+                max_tokens=200,
+                seed=_seed_for(spec, position),
+            ).text
+
+        complied = confederate_complied(text, answer_key)
         all_complied = all_complied and complied
-        turns.append((position, answer_key, gen.text))
+        turns.append((position, answer_key, text))
         transcript.append(
             {
                 "position": position,
                 "role": "confederate",
                 "assigned_answer": answer_key,
-                "text": gen.text,
+                "text": text,
                 "complied": complied,
             }
         )

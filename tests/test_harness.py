@@ -13,10 +13,18 @@ import pytest
 
 from src.asch.analyze import baseline_error_rate, independence_ratios, tabulate
 from src.asch.backends import MockBackend
-from src.asch.config import Difficulty, GridConfig, Kinship, Privacy, TrialSpec, Unanimity
+from src.asch.config import (
+    ConfederateStyle,
+    Difficulty,
+    GridConfig,
+    Kinship,
+    Privacy,
+    TrialSpec,
+    Unanimity,
+)
 from src.asch.items import Item, generate_perceptual_bank, load_bank, save_bank
 from src.asch.parsing import Stance, classify_stance, confederate_complied, parse_answer
-from src.asch.prompts import assign_confederate_answers, naive_messages
+from src.asch.prompts import assign_confederate_answers, confederate_messages, naive_messages
 from src.asch.runner import completed_trial_ids, run_grid, run_trial
 
 
@@ -162,6 +170,56 @@ def test_ally_condition_plants_exactly_one_correct_answer(item: Item):
     answers = assign_confederate_answers(item, 3, Unanimity.ALLY)
     assert answers.count(item.correct) == 1
     assert answers[0] == item.distractor, "majority must speak first to avoid a primacy confound"
+
+
+def test_confederate_prompt_frames_the_answer_as_a_line_not_a_fact(item: Item):
+    """Regression guard for the 30% character-break rate in gate run 1.
+
+    The old wording ("you must argue that the correct answer is X") asked the model to assert a
+    falsehood as fact and collided with its honesty training. Role-play framing does not.
+    """
+    text = " ".join(m["content"] for m in confederate_messages(item, "B", position=1))
+    assert "correct answer is" not in text
+    assert "assigned response" in text
+
+
+def test_bare_confederate_needs_no_model_call(item: Item, spec: TrialSpec):
+    from dataclasses import replace
+
+    class NoConfederateCalls(MockBackend):
+        def generate(self, messages, **kwargs):
+            prompt = "\n".join(m["content"] for m in messages)
+            assert "assigned response" not in prompt, "BARE style must not call the backend"
+            return super().generate(messages, **kwargs)
+
+    bare = replace(spec, confederate_style=ConfederateStyle.BARE)
+    result = run_trial(bare, item, NoConfederateCalls(conformity_prob=1.0))
+    assert result.confederates_complied
+    assert all(
+        t["text"] == f"Answer: {t['assigned_answer']}"
+        for t in result.transcript
+        if t["role"] == "confederate"
+    )
+
+
+def test_bare_transcript_has_no_empty_justification_line(item: Item):
+    turns = [(1, "B", "Answer: B")]
+    rendered = naive_messages(item, turns, Privacy.PUBLIC)[-1]["content"]
+    assert "Participant 1 answered: B" in rendered
+    assert "said:" not in rendered, "a blank justification would cue the naive agent"
+
+
+def test_justified_transcript_keeps_the_justification(item: Item):
+    turns = [(1, "B", "Answer: B\nB is clearly the longest.")]
+    rendered = naive_messages(item, turns, Privacy.PUBLIC)[-1]["content"]
+    assert "said:" in rendered
+    assert "clearly the longest" in rendered
+
+
+def test_confederate_style_changes_trial_identity(spec: TrialSpec):
+    from dataclasses import replace
+
+    assert replace(spec, confederate_style=ConfederateStyle.BARE).trial_id != spec.trial_id
 
 
 def test_incompetent_dissenter_gives_a_third_answer(item: Item):

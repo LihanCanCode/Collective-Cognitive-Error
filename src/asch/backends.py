@@ -97,7 +97,10 @@ class MockBackend(Backend):
         prompt = "\n".join(m["content"] for m in messages)
         rng = random.Random(_stable_seed(prompt if seed is None else f"{prompt}{seed}"))
 
-        assigned = re.search(r"You must argue that the correct answer is ([ABC])\b", prompt)
+        # Coupled to prompts.confederate_messages by wording. If that prompt is reworded, this
+        # regex must move with it or the mock silently stops role-playing confederates --
+        # test_run_trial_produces_full_transcript is the tripwire.
+        assigned = re.search(r"Your assigned response this round is:\s*([ABC])\b", prompt)
         if assigned:
             key = assigned.group(1)
             return Generation(

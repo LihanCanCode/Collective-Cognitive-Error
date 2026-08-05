@@ -44,7 +44,7 @@ if str(_REPO_ROOT) not in sys.path:
 
 from src.asch.analyze import baseline_error_rate, format_table, independence_ratios, tabulate  # noqa: E402
 from src.asch.backends import APIBackend, HFBackend, MockBackend, VLLMBackend  # noqa: E402
-from src.asch.config import GridConfig, Kinship, Privacy, Unanimity  # noqa: E402
+from src.asch.config import ConfederateStyle, GridConfig, Kinship, Privacy, Unanimity  # noqa: E402
 from src.asch.items import generate_perceptual_bank, load_bank  # noqa: E402
 from src.asch.runner import load_results, run_grid  # noqa: E402
 
@@ -77,6 +77,10 @@ def main() -> None:
     ap.add_argument("--n-items", type=int, default=50)
     ap.add_argument("--mock-conformity", type=float, default=0.30,
                     help="mock backend only: ground-truth rate the analysis should recover")
+    ap.add_argument("--confederate-style", choices=[s.value for s in ConfederateStyle],
+                    default=ConfederateStyle.JUSTIFIED.value,
+                    help="bare = answer only (faithful Asch, no model call); "
+                         "justified = confederates write their own supporting argument")
     ap.add_argument("--no-resume", action="store_true")
     args = ap.parse_args()
 
@@ -91,6 +95,7 @@ def main() -> None:
         unanimity=[Unanimity.UNANIMOUS],
         privacy=[Privacy.PUBLIC],
         kinship=[Kinship.SAME_FAMILY],
+        confederate_style=[ConfederateStyle(args.confederate_style)],
         temperature=0.0,
         study="smoke",
     )

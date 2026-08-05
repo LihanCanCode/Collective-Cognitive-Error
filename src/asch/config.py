@@ -30,6 +30,24 @@ class Unanimity(str, Enum):
     INCOMPETENT_DISSENTER = "incompetent_dissenter"
 
 
+class ConfederateStyle(str, Enum):
+    """What the confederates actually say.
+
+    BARE: the answer alone, no reasoning -- this is what Asch's confederates did. They stated a
+        line and nothing else, so conformity could only be social. The faithful replication arm.
+    JUSTIFIED: a real model call constrained to the assigned answer, writing its own supporting
+        argument. Stronger pressure than Asch, and the multi-agent-realistic condition -- but it
+        confounds social conformity with being argued into a position, because the arguments are
+        themselves fabricated ("312 is larger than 787 because of the hundreds place").
+
+    Running both separates "I agreed because everyone agreed" from "I agreed because the argument
+    sounded plausible" -- a distinction no prior LLM-conformity paper draws.
+    """
+
+    BARE = "bare"
+    JUSTIFIED = "justified"
+
+
 class Privacy(str, Enum):
     """Whether the naive agent's answer is visible to the group.
 
@@ -73,6 +91,7 @@ class TrialSpec:
     confederate_model: str
     temperature: float
     sample_idx: int
+    confederate_style: ConfederateStyle = ConfederateStyle.JUSTIFIED
     study: str = "study1"
 
     @property
@@ -108,6 +127,9 @@ class GridConfig:
     unanimity: list[Unanimity] = field(default_factory=lambda: list(Unanimity))
     privacy: list[Privacy] = field(default_factory=lambda: list(Privacy))
     kinship: list[Kinship] = field(default_factory=lambda: [Kinship.SAME_FAMILY])
+    confederate_style: list[ConfederateStyle] = field(
+        default_factory=lambda: [ConfederateStyle.JUSTIFIED]
+    )
     temperature: float = 0.0
     samples_per_cell: int = 1
     study: str = "study1"
@@ -115,13 +137,14 @@ class GridConfig:
     def expand(self, items: list) -> list[TrialSpec]:
         """Cartesian product of conditions x items, with degenerate cells pruned."""
         trials: list[TrialSpec] = []
-        for item, model, n, unan, priv, kin, s in itertools.product(
+        for item, model, n, unan, priv, kin, style, s in itertools.product(
             items,
             self.models,
             self.n_confederates,
             self.unanimity,
             self.privacy,
             self.kinship,
+            self.confederate_style,
             range(self.samples_per_cell),
         ):
             if not _cell_is_meaningful(n, unan):
@@ -138,6 +161,7 @@ class GridConfig:
                     confederate_model=self.confederate_model,
                     temperature=self.temperature,
                     sample_idx=s,
+                    confederate_style=style,
                     study=self.study,
                 )
             )

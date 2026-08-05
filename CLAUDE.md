@@ -189,9 +189,38 @@ trials/model, i.e. **~12 h/model** at this rate. Fine for the gate, far too slow
 Before P2 launches we need either vLLM (current release) or batched generation in the runner —
 the runner is currently strictly one call at a time.
 
+**Gate run 1 transcripts — two findings:**
+
+1. 🔴 **Discard is 100% confederate character-breaks** (30%), parse failures 0%. Fixed by
+   reframing the confederate prompt as scripted role-play ("your assigned response this round
+   is X · deliver it in character") instead of asking the model to assert a falsehood as fact
+   ("you must argue that the correct answer is X"), which collided with honesty training.
+   Compliance is still verified per trial — the fix reduces breaks, it does not assume them away.
+
+2. 🟢 **The Study 2 headline appeared unprompted in the pilot.** Conforming naive agents did not
+   merely switch answers, they *fabricated supporting facts*: "based on the hundreds place, 312 is
+   larger than both 242 and 787" (confidence 95); "288 is larger than 627 and 135 because it has
+   more digits" (confidence 90). ⚠️ **Write this up carefully:** the *confederates'* fabrications
+   are commissioned and prove nothing. Only the **naive agent's** fabrication is evidence — nobody
+   instructed it to invent a rule about digit counts. That distinction is the entire result.
+
+**Design change: `ConfederateStyle` (BARE | JUSTIFIED).** The transcripts exposed a fidelity
+problem — Asch's confederates gave *no* justification, they stated a line. Ours write persuasive
+(fabricated) arguments, which is stronger pressure than Asch's and conflates conformity with
+being argued into a position. Both arms now exist:
+- `BARE` — answer only. Faithful Asch replication, and needs no model call, so it is free and
+  compliance is guaranteed by construction rather than checked.
+- `JUSTIFIED` — confederates write their own argument. The multi-agent-realistic condition.
+
+Comparing them separates "I agreed because everyone agreed" from "I agreed because the argument
+sounded plausible". No prior LLM-conformity paper draws that distinction.
+
+⚠️ `ConfederateStyle` is part of `TrialSpec`, so **all trial IDs changed** — gate run 1 results
+will not resume-match and should be treated as a separate, superseded run.
+
 **Next up (in order):**
-0. ⬜ Run `scripts/diagnose.py` on the saved gate results → per-subtype baseline accuracy and the
-   discard breakdown. Then re-run the gate on the new bank.
+0. ⬜ Gate run 2 on the new bank + new confederate prompt. Expect: baseline error <10%,
+   break rate well under 30%. Run `--confederate-style bare` too — it is nearly free.
 1. ⬜ **Run the day-3 smoke test on a real model** (Kaggle, Qwen2.5-7B-Instruct). THE gate.
    `python scripts/run_smoke.py --backend hf --model Qwen/Qwen2.5-7B-Instruct`
    Pass = conformity rate roughly 5–70% **and** baseline error <10%. The script prints an
