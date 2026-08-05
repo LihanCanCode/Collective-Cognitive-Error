@@ -158,7 +158,40 @@ and Kaggle/Colab do not run the same version.
 - **Bug caught by test, fixed:** `tabulate()` counted stances over all records but divided by
   valid-only, letting conformity rate exceed 1.0. Stances are now tallied over valid trials only.
 
+### 2026-08-06 — Session 2 (first real gate run)
+
+**Gate run 1: Qwen2.5-7B-Instruct, hf backend, 100 trials → FAIL (bank).**
+
+| Metric | Value | Target |
+|---|---|---|
+| baseline error (n=0) | **20.0%** | <10% ❌ |
+| conformity rate (n=3) | 62.9% | 5–70% ✅ |
+| discard rate (n=3) | **30.0%** | <15% ❌ |
+| independence ratio | 37.1% | (Asch: 25%) |
+| full-conformity ratio | 62.9% | (Asch: 5%) |
+
+**Diagnosis + fix (baseline):** the original bank used character-level tasks — "which string has
+the most characters" and "how many times does letter X appear in this scrambled string".
+Character counting is tokenization-hostile and a known LLM weakness, so those items measured
+**capability, not conformity** — exactly the confound the calibration pre-pass exists to remove.
+Replaced with comparisons over semantic units: `magnitude` (unchanged), `arithmetic` (two-digit
+addition, distractors ≥15 away), `list_count` (count words in a short comma-separated list,
+gaps ≥3). Faithful to Asch, whose task was *trivially* easy for participants. A regression test
+now blocks character-level subtypes from returning to the easy tier.
+
+**Deliberately NOT fixed yet:** the 30% discard. Cause is unknown — confederate character-breaks
+and parse failures need different fixes. `scripts/diagnose.py` reports the split from the saved
+JSONL (no GPU). Changing the bank *and* the confederate prompt in one cycle would make the next
+result unattributable, so the prompt waits for evidence.
+
+**Also noted:** hf backend ran at 0.1 trials/s → ~17 min for 100 trials. The full grid is ~4,300
+trials/model, i.e. **~12 h/model** at this rate. Fine for the gate, far too slow for the grid.
+Before P2 launches we need either vLLM (current release) or batched generation in the runner —
+the runner is currently strictly one call at a time.
+
 **Next up (in order):**
+0. ⬜ Run `scripts/diagnose.py` on the saved gate results → per-subtype baseline accuracy and the
+   discard breakdown. Then re-run the gate on the new bank.
 1. ⬜ **Run the day-3 smoke test on a real model** (Kaggle, Qwen2.5-7B-Instruct). THE gate.
    `python scripts/run_smoke.py --backend hf --model Qwen/Qwen2.5-7B-Instruct`
    Pass = conformity rate roughly 5–70% **and** baseline error <10%. The script prints an

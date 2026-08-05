@@ -73,18 +73,41 @@ def test_magnitude_items_have_the_right_correct_answer():
             assert max(values, key=values.get) == it.correct
 
 
-def test_length_items_have_the_right_correct_answer():
+def test_arithmetic_items_have_the_right_correct_answer():
     for it in generate_perceptual_bank(30):
-        if it.subtype == "length":
-            assert max(it.options, key=lambda k: len(it.options[k])) == it.correct
+        if it.subtype == "arithmetic":
+            a, b = (int(x) for x in it.question.removeprefix("What is ").rstrip("?").split(" + "))
+            assert it.options[it.correct] == str(a + b)
 
 
-def test_counting_items_have_the_right_correct_answer():
+def test_arithmetic_distractors_are_not_near_misses():
+    """A near-miss option is one the model could reasonably defend, which muddies conformity."""
     for it in generate_perceptual_bank(30):
-        if it.subtype == "counting":
-            letter = it.question.split("letter '")[1][0]
-            sequence = it.question.rsplit("\n\n", 1)[1]
-            assert it.options[it.correct] == str(sequence.count(letter))
+        if it.subtype == "arithmetic":
+            correct = int(it.options[it.correct])
+            for key, value in it.options.items():
+                if key != it.correct:
+                    assert abs(int(value) - correct) >= 15
+
+
+def test_list_count_items_have_the_right_correct_answer():
+    for it in generate_perceptual_bank(30):
+        if it.subtype == "list_count":
+            counts = {k: len(v.split(", ")) for k, v in it.options.items()}
+            assert max(counts, key=counts.get) == it.correct
+            ordered = sorted(counts.values(), reverse=True)
+            assert ordered[0] - ordered[1] >= 3, "gap must be unambiguous"
+
+
+def test_bank_contains_no_character_level_tasks():
+    """Regression guard for the 2026-08-06 gate failure.
+
+    Character counting and string-length comparison are tokenization-hostile: Qwen2.5-7B scored
+    80% on them alone, so they measured capability rather than conformity. They must not come
+    back into the easy tier.
+    """
+    subtypes = {it.subtype for it in generate_perceptual_bank(60)}
+    assert not subtypes & {"counting", "length"}
 
 
 def test_bank_roundtrip(tmp_path: Path):
