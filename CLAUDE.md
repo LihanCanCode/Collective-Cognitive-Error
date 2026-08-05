@@ -151,10 +151,26 @@ Kaggle/Colab, not on this machine.
 4. ⬜ OSF preregistration (must precede the full grid).
 5. ⬜ Launch Study 1 full grid.
 
-**Blocked on the user (raised 2026-08-06, both have lead time):**
-- ⬜ Recruit **2 human annotators** for the 200-trial κ validation (needed W4–5, recruit now).
-- ⬜ **Paid API budget** for the frontier replication (keys live by end of W2).
+**Deferred by decision (2026-08-06) — do NOT re-raise these as blockers:**
+- **Paid API keys / budget:** deferred until *after* the smoke-test gate passes. Correct call —
+  if the gate fails the design changes, and credits bought now would be wasted. Revisit at W3.
+- **Annotators:** deferred. The user will do a share of the annotation themselves.
+  ⚠️ **Constraint to respect when this comes back:** κ requires **two** annotators, and the
+  author knowing the hypothesis is a bias risk. Target = user + **one** independent person,
+  both working from condition-blinded records. One recruit, not two, and no work needed from
+  them until W4.
+
+**User's actual to-do list (manual, cannot be automated from here):**
+- ⬜ Kaggle account with **phone verification** (required before GPU access is granted)
+- ⬜ Hugging Face account + token. **Llama-3.1 is gated** — accept the licence early, approval
+  is not instant and it sits on the W3 critical path. Qwen/Mistral/Gemma are ungated.
+- ⬜ Run `notebooks/kaggle_smoke_test.py` and report the verdict + CELL 5 diagnostics
+- ⬜ OSF account (preregistration must precede the full grid)
+- ⬜ OpenReview profile (needed to submit to ICLR)
 
 **Open questions:**
 - Kaggle vs Colab as primary runner — leaning Kaggle for the grid, Colab for dev.
-- Which frontier models for the replication (depends on budget).
+- Which frontier models for the replication (depends on budget, revisit W3).
+
+**Repo:** https://github.com/LihanCanCode/Collective-Cognitive-Error (`main`).
+PDFs are gitignored on purpose — copyrighted third-party papers, public repo.
