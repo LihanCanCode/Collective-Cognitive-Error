@@ -1,0 +1,20 @@
+# Core harness runs on the standard library alone — MockBackend needs nothing installed.
+pytest>=8.0
+
+# Analysis
+numpy>=1.26
+pandas>=2.0
+scipy>=1.11
+statsmodels>=0.14        # mixed-effects logistic regression for the main grid
+
+# Data acquisition (Kaggle/Colab only)
+datasets>=2.19
+
+# Open-weights inference (GPU only — do not install on a laptop)
+# vllm>=0.6
+# transformers>=4.44
+
+# Frontier replication (install only the providers actually used)
+# anthropic>=0.40
+# openai>=1.50
+# google-genai>=0.3
