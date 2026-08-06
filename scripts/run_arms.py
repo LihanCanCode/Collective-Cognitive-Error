@@ -29,7 +29,12 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from src.asch.analyze import baseline_error_rate, excess_conformity, tabulate  # noqa: E402
+from src.asch.analyze import (  # noqa: E402
+    baseline_error_rate,
+    compare_proportions,
+    excess_conformity,
+    tabulate,
+)
 from src.asch.calibration import model_slug  # noqa: E402
 from src.asch.config import (  # noqa: E402
     ConfederateStyle,
@@ -61,14 +66,21 @@ def main() -> None:
     ap.add_argument("--backend", choices=["mock", "hf", "vllm", "api"], default="mock")
     ap.add_argument("--model", default="mock-7b")
     ap.add_argument("--dtype", default="float16")
-    ap.add_argument("--items", type=Path, default=_REPO_ROOT / "data" / "smoke_items.jsonl")
+    ap.add_argument("--items", type=Path, default=_REPO_ROOT / "data" / "items_main.jsonl",
+                    help="defaults to the 200-item main bank; the 50-item smoke bank is "
+                         "underpowered for these contrasts")
     ap.add_argument("--n-items", type=int, default=0, help="0 = whole bank")
     ap.add_argument("--n-confederates", type=int, default=3)
     ap.add_argument("--batch-size", type=int, default=1)
     ap.add_argument("--out-dir", type=Path, default=_REPO_ROOT / "results" / "arms")
     args = ap.parse_args()
 
-    items = load_bank(args.items) if args.items.exists() else generate_perceptual_bank(50)
+    if not args.items.exists():
+        print(f"[run_arms] {args.items} not found — generating a 200-item bank", file=sys.stderr)
+        from src.asch.items import save_bank  # noqa: PLC0415
+
+        save_bank(generate_perceptual_bank(200), args.items)
+    items = load_bank(args.items)
     if args.n_items:
         items = items[: args.n_items]
     item_map = {i.item_id: i for i in items}
@@ -110,20 +122,57 @@ def _report(model: str, rows: list) -> None:
     print("-" * 92)
 
     table = {}
+    counts = {}
     for style, fmt, label, records in rows:
         base = baseline_error_rate(records)
         cells = tabulate([r for r in records if r.get("n_confederates", 0) > 0], by=("model",))
-        cr = next(iter(cells.values())).conformity_rate if cells else None
+        cell = next(iter(cells.values())) if cells else None
+        cr = cell.conformity_rate if cell else None
         exc = excess_conformity(records).get((), {}).get("excess")
-        n = next(iter(cells.values())).n_valid if cells else 0
+        n = cell.n_valid if cell else 0
         table[(style.value, fmt.value)] = cr
+        counts[(style.value, fmt.value)] = (cell.n_adopted if cell else 0, n)
         print(
             f"{style.value:<11} {fmt.value:<16} {_pct(base):>9} {_pct(cr):>7} "
             f"{_pct(exc):>8} {n:>5}  {label}"
         )
 
     print("=" * 92)
+    _significance(counts)
     _interpret(table)
+
+
+def _significance(counts: dict) -> None:
+    """Pairwise tests, with the n each comparison actually needed.
+
+    Printed because a non-significant difference at small n means *underpowered*, not *no
+    effect*, and reporting the point estimates alone invites exactly that misreading.
+    """
+    comparisons = [
+        ("argumentation", ("bare", "reasoning_first"), ("justified", "reasoning_first")),
+        ("response format", ("justified", "reasoning_first"), ("justified", "answer_first")),
+        ("format w/o argument", ("bare", "reasoning_first"), ("bare", "answer_first")),
+        ("combined", ("bare", "reasoning_first"), ("justified", "answer_first")),
+    ]
+    available = [c for c in comparisons if c[1] in counts and c[2] in counts]
+    if not available:
+        return
+
+    print("\nPAIRWISE TESTS (Fisher exact, two-tailed)")
+    print(f"  {'contrast':<20} {'a':>9} {'b':>9} {'p':>9}  {'needed n/arm':>13}")
+    for label, a, b in available:
+        (k1, n1), (k2, n2) = counts[a], counts[b]
+        if not n1 or not n2:
+            continue
+        res = compare_proportions(k1, n1, k2, n2)
+        flag = "*" if res["significant"] else " "
+        need = res["required_n"]
+        need_str = f"{need}" if need else "-"
+        have = f" (have {min(n1, n2)})" if need and need > min(n1, n2) else ""
+        print(
+            f"  {label:<20} {k1:>4}/{n1:<4} {k2:>4}/{n2:<4} {res['p_value']:>8.4f}{flag} "
+            f"{need_str:>13}{have}"
+        )
 
 
 def _interpret(table: dict) -> None:

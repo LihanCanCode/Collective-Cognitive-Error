@@ -192,6 +192,49 @@ def independence_ratios(records: Iterable[dict]) -> dict[str, float | None]:
     }
 
 
+def compare_proportions(k1: int, n1: int, k2: int, n2: int) -> dict:
+    """Fisher's exact test plus the sample size the comparison actually needed.
+
+    Fisher rather than chi-square because our cells are small and several counts are near zero,
+    where the chi-square approximation is unreliable.
+
+    ``required_n`` is reported alongside the p-value on purpose: a non-significant result at
+    n=50 means "underpowered", not "no effect", and conflating those two would be the easiest way
+    to draw a wrong conclusion from this design.
+    """
+    from scipy.stats import fisher_exact  # noqa: PLC0415 - keeps import cost off the hot path
+
+    _, p = fisher_exact([[k1, n1 - k1], [k2, n2 - k2]])
+    p1 = k1 / n1 if n1 else 0.0
+    p2 = k2 / n2 if n2 else 0.0
+    return {
+        "p1": p1,
+        "p2": p2,
+        "difference": p2 - p1,
+        "p_value": p,
+        "significant": p < 0.05,
+        "required_n": required_n_per_group(p1, p2),
+    }
+
+
+def required_n_per_group(p1: float, p2: float, power: float = 0.80, alpha: float = 0.05) -> int | None:
+    """Per-group n for a two-proportion test at the given power.
+
+    A zero proportion is nudged off the boundary; the variance term would otherwise vanish and
+    report an impossibly small requirement.
+    """
+    from statistics import NormalDist  # noqa: PLC0415
+
+    p1 = min(max(p1, 0.001), 0.999)
+    p2 = min(max(p2, 0.001), 0.999)
+    if p1 == p2:
+        return None
+    z_alpha = NormalDist().inv_cdf(1 - alpha / 2)
+    z_beta = NormalDist().inv_cdf(power)
+    n = ((z_alpha + z_beta) ** 2) * (p1 * (1 - p1) + p2 * (1 - p2)) / (p1 - p2) ** 2
+    return int(n) + 1
+
+
 def format_table(cells: dict, by: tuple[str, ...]) -> str:
     """Plain-text summary for terminal and log output."""
     header = [*by, "trials", "valid", "CR", "95% CI", "acc", "conf", "tok", "discard"]

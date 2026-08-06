@@ -23,6 +23,9 @@ from src.asch.items import generate_perceptual_bank, save_bank  # noqa: E402
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
+    # 50 is the gate's size -- enough to spot a broken bank, not enough to measure with.
+    # Observed effects (0% / 6% / 20%) need ~129 items per arm for 80% power, so the main bank
+    # is 200. See scripts/run_arms.py, which prints the required n alongside every p-value.
     ap.add_argument("--n", type=int, default=50)
     ap.add_argument("--seed", type=int, default=20260806)
     ap.add_argument("--out", type=Path, default=_REPO_ROOT / "data" / "smoke_items.jsonl")

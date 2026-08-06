@@ -768,6 +768,32 @@ def test_excess_conformity_tolerates_older_records_without_the_field():
     assert excess_conformity([{"valid": True, "n_confederates": 0, "answer": "A"}]) == {}
 
 
+def test_compare_proportions_reports_underpowered_rather_than_null():
+    """The distinction the whole pilot turns on.
+
+    3/50 vs 0/50 is not significant, but that means "underpowered", not "no effect" -- and the
+    required-n figure is what makes the difference legible instead of inviting the wrong reading.
+    """
+    from src.asch.analyze import compare_proportions
+
+    weak = compare_proportions(0, 50, 3, 50)
+    assert not weak["significant"]
+    assert weak["required_n"] > 50, "must show the comparison needed more data"
+
+    strong = compare_proportions(0, 50, 10, 50)
+    assert strong["significant"]
+    assert strong["p_value"] < 0.01
+    assert strong["required_n"] <= 50
+
+
+def test_required_n_handles_a_zero_proportion():
+    """A zero rate would otherwise zero the variance term and report an absurdly small n."""
+    from src.asch.analyze import required_n_per_group
+
+    assert required_n_per_group(0.0, 0.06) > 100
+    assert required_n_per_group(0.1, 0.1) is None
+
+
 def test_baseline_error_rate_uses_only_control_trials():
     records = [
         {"n_confederates": 0, "valid": True, "answer": "A", "correct_answer": "A"},
