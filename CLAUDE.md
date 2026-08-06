@@ -690,13 +690,52 @@ strongest effect (p<0.0001, needed n=19-32 on the 200-item run). A real sequenti
 a fraction of the full 5-cell sweep's time; not a substitute for it, a legitimate reduced subset.
 `_interpret()` already degrades gracefully when cells 1/2 are absent (prints only what's computable).
 
+### 2026-08-07 — Session 14 (Study 2 mined for real; a pooling bug caught and fixed)
+
+**User downloaded the batched arm-sweep JSONL locally (in `results/`) and `mine_fabrication.py`
+ran against real data for the first time.** First pass produced a pooling bug I caught before
+treating the number as real: at n=0 there is no confederate, so `confederate_style` is a no-op —
+the `bare` and `justified` arms' n=0 slices are the *same* underlying alone-condition regenerated
+under a different seed (2-3x per model, matching how many arms share a `response_format`).
+Naive pooling summed these as independent trials, inflating the spontaneous-error denominator.
+**Fixed:** `mine_fabrication.py` now dedupes n=0 records by `(model, response_format, item_id)`
+before pooling. `test_n0_dedup_key_collapses_across_confederate_style_but_not_response_format`
+guards it. 81 tests total.
+
+**Corrected result, WITH per-model breakdown (added because pooling across models is itself not
+defensible — Qwen and Mistral differ hugely in baseline error, session 13):**
+
+| | pressured (n>0) | spontaneous (n=0) | ratio | p (Fisher) | needed n |
+|---|---|---|---|---|---|
+| pooled | 252/460 = 54.8% | 14/72 = 19.4% | 2.82x | <0.0001 | 26 |
+| **Mistral only** | 204/373 = 54.7% | **11/69 = 15.9%** | **3.4x** | **<0.0001** | **20** |
+| Qwen only | 48/83 = 57.8% | **3/3 = 100.0%** | — | 0.267 (n.s.) | — |
+
+> 🔑 **Mistral is the trustworthy comparison — cite that one.** Decent n on both sides, p<0.0001,
+> needed n far exceeded. **Qwen's 3/3 spontaneous is noise, not signal** — Qwen's bank is so
+> clean (session 13: 0-1.5% baseline error) that only 3 spontaneous errors exist in the entire
+> pressured-arms corpus to compare against, and 3/3 is not a rate, it's an anecdote. Its Fisher
+> test correctly comes back non-significant (p=0.267) despite matching Mistral's direction. Do
+> not quote "100%" anywhere.
+
+**Mechanistic bonus, worth a sentence in the paper:** Qwen's `bare+answer_first, n=3` cell shows
+6/16 = 37.5% fabrication **despite BARE confederates giving no argument at all**. Under
+ANSWER_FIRST the naive agent commits before it may reason, so when it lands on the distractor
+anyway (from format pressure alone, no persuasive content), it still fabricates a rationale ~1/3
+of the time. Fabrication is not purely a response to persuasive input — snap-judgement format
+alone induces some of it, independent of social content.
+
+**Also true and worth stating plainly: even before the dedup fix, the headline was never wrong,
+only imprecise.** The direction (pressured > spontaneous) and rough magnitude (~2.7-2.8x) survived
+the correction essentially unchanged. The fix mattered for *defensibility* (a reviewer would catch
+the duplicate-counting immediately), not for the qualitative finding.
+
 **Next up (in order):**
 0. ⬜ **Time-boxed sequential confirmation** — `run_arms.py --cells 0,3 --n-items 50` on Qwen
    (cleanest baseline). ~45-70 min. Confirms the headline contrast is not a batching artefact.
 1. ⬜ **Full sequential confirmatory run** (all 5 cells, 200 items, `--batch-size 1` default) on
    Qwen, Mistral, Phi-3.5 — the numbers that actually go in the paper. ~4-5h/model, resumable.
-2. ⬜ Run `scripts/mine_fabrication.py` against the saved `results_arms*` directories once
-   downloaded/persisted — cheap, no GPU, can run locally on the JSONL.
+   Will also fatten Qwen's spontaneous-error n enough to make its fabrication comparison usable.
 1. ⬜ Calibrate a HARD tier (`--samples 10` for finer granularity) and re-run the arms on it — confirm `smallest` and `alphabetical` hit ≥95%
    baseline, and check whether they conform like `magnitude` or like `list_count`. This directly
    tests the enumeration hypothesis above.

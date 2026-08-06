@@ -707,6 +707,26 @@ def test_invalid_and_unknown_item_records_are_skipped(item: Item):
     assert stats.n_wrong == 0
 
 
+def test_n0_dedup_key_collapses_across_confederate_style_but_not_response_format(item: Item):
+    """Regression guard for the pooling bug found against real Kaggle data (session 13).
+
+    At n=0 there is no confederate, so confederate_style is a no-op -- the bare/answer_first and
+    justified/answer_first arms' n=0 slices are the SAME underlying alone-condition regenerated
+    under a different seed, not independent trials. response_format genuinely changes the n=0
+    prompt, so those must NOT collapse together.
+    """
+    same_fmt_a = {"n_confederates": 0, "model": "m", "response_format": "answer_first",
+                  "item_id": item.item_id, "confederate_style": "bare"}
+    same_fmt_b = {**same_fmt_a, "confederate_style": "justified"}
+    diff_fmt = {**same_fmt_a, "response_format": "reasoning_first"}
+
+    def key(r):
+        return (r.get("model"), r.get("response_format"), r.get("item_id"))
+
+    assert key(same_fmt_a) == key(same_fmt_b), "same response_format must dedupe together"
+    assert key(same_fmt_a) != key(diff_fmt), "different response_format is a real difference"
+
+
 # --- gate verdict ---------------------------------------------------------------------
 
 
