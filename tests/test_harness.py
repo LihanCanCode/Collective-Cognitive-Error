@@ -81,21 +81,31 @@ def test_magnitude_items_have_the_right_correct_answer():
             assert max(values, key=values.get) == it.correct
 
 
-def test_arithmetic_items_have_the_right_correct_answer():
-    for it in generate_perceptual_bank(30):
-        if it.subtype == "arithmetic":
-            a, b = (int(x) for x in it.question.removeprefix("What is ").rstrip("?").split(" + "))
-            assert it.options[it.correct] == str(a + b)
+def test_smallest_items_have_the_right_correct_answer():
+    for it in generate_perceptual_bank(40):
+        if it.subtype == "smallest":
+            values = {k: int(v) for k, v in it.options.items()}
+            assert min(values, key=values.get) == it.correct
 
 
-def test_arithmetic_distractors_are_not_near_misses():
-    """A near-miss option is one the model could reasonably defend, which muddies conformity."""
-    for it in generate_perceptual_bank(30):
-        if it.subtype == "arithmetic":
-            correct = int(it.options[it.correct])
-            for key, value in it.options.items():
-                if key != it.correct:
-                    assert abs(int(value) - correct) >= 15
+def test_alphabetical_items_have_the_right_correct_answer():
+    for it in generate_perceptual_bank(40):
+        if it.subtype == "alphabetical":
+            assert min(it.options.values()) == it.options[it.correct]
+            first_letters = {v[0] for v in it.options.values()}
+            assert len(first_letters) == 3, "distinct first letters keep the ordering obvious"
+
+
+def test_bank_has_no_items_requiring_computation():
+    """Regression guard for the gate run 2 failure.
+
+    Two-digit addition scored 88.2% alone -- the model made plain reasoning slips at confidence
+    100. Any item with an intermediate computation step lets capability leak into the conformity
+    measure. Asch's task was a single-glance perceptual comparison; ours must be too.
+    """
+    for it in generate_perceptual_bank(60):
+        assert "+" not in it.question
+        assert it.subtype != "arithmetic"
 
 
 def test_list_count_items_have_the_right_correct_answer():
