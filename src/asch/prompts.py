@@ -83,6 +83,28 @@ def bare_confederate_text(assigned_answer: str) -> str:
     return f"Answer: {assigned_answer}"
 
 
+# Content-free sentences: they assert nothing about the stimulus, give no reason, and cite no
+# feature of the options. Length is matched to observed JUSTIFIED justifications (~12-18 words),
+# so FILLER and JUSTIFIED turns look comparably substantial in the transcript.
+_FILLER_SENTENCES = (
+    "I have looked over the options and this is the response I am going with.",
+    "That is my answer for this round; I have settled on it and I am moving on.",
+    "I considered what was presented here and this is what I have decided to say.",
+    "This is my response for this round, and I am comfortable leaving it there.",
+)
+
+
+def filler_confederate_text(assigned_answer: str, position: int) -> str:
+    """The FILLER confederate turn: the answer plus a sentence that argues nothing.
+
+    Holds textual salience roughly constant against JUSTIFIED while removing the argument, so the
+    BARE/JUSTIFIED gap can be attributed to argumentation rather than to "there was more text".
+    Varied by position so the transcript does not read as three identical bot replies, which would
+    itself be a cue.
+    """
+    return f"Answer: {assigned_answer}\n{_FILLER_SENTENCES[position % len(_FILLER_SENTENCES)]}"
+
+
 def assign_confederate_answers(item: Item, n: int, unanimity: Unanimity) -> list[str]:
     """Which answer each confederate is scripted to give.
 

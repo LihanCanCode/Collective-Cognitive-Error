@@ -429,6 +429,87 @@ def test_batching_deduplicates_confederate_calls():
     assert calls[-1] == naive_calls
 
 
+def test_filler_matches_justified_length_but_argues_nothing():
+    """FILLER is the control that makes the BARE/JUSTIFIED contrast interpretable.
+
+    It must look comparably substantial to a justified turn (so salience is held roughly
+    constant) while containing nothing about the stimulus (so only the argument is removed).
+    """
+    from src.asch.prompts import filler_confederate_text
+
+    texts = [filler_confederate_text("B", p) for p in range(4)]
+    assert len(set(texts)) > 1, "identical replies would themselves be a cue"
+
+    for text in texts:
+        assert text.startswith("Answer: B")
+        sentence = text.split("\n", 1)[1]
+        assert 10 <= len(sentence.split()) <= 20, "length should sit in the justified range"
+        # Argues nothing: never names an option, a value, or a comparison.
+        for banned in ("largest", "smallest", "more", "most", "because", "than", "correct"):
+            assert banned not in sentence.lower(), f"{banned!r} leaks an argument"
+
+
+def test_filler_renders_with_a_said_line_unlike_bare(item: Item):
+    """The whole point is that FILLER occupies transcript space that BARE does not."""
+    from src.asch.prompts import filler_confederate_text
+
+    bare = naive_messages(item, [(1, "B", "Answer: B")], Privacy.PUBLIC)[-1]["content"]
+    filler = naive_messages(
+        item, [(1, "B", filler_confederate_text("B", 1))], Privacy.PUBLIC
+    )[-1]["content"]
+
+    assert "said:" not in bare
+    assert "said:" in filler
+    assert len(filler) > len(bare)
+
+
+def test_filler_needs_no_model_call():
+    items = generate_perceptual_bank(4)
+    specs = GridConfig(
+        models=["mock-7b"],
+        confederate_model="mock-7b",
+        n_confederates=[3],
+        unanimity=[Unanimity.UNANIMOUS],
+        privacy=[Privacy.PUBLIC],
+        confederate_style=[ConfederateStyle.FILLER],
+    ).expand(items)
+
+    calls: list[int] = []
+
+    class Counting(MockBackend):
+        def generate_batch(self, batch, **kwargs):
+            calls.append(len(batch))
+            return super().generate_batch(batch, **kwargs)
+
+    records = _run_chunk(specs, {i.item_id: i for i in items}, Counting(1.0))
+    assert all(r["confederates_complied"] for r in records)
+    assert calls == [len(specs)], "only the naive turns should be generated"
+
+
+def test_all_scripted_styles_agree_between_batched_and_sequential(tmp_path: Path):
+    items = generate_perceptual_bank(8)
+    item_map = {i.item_id: i for i in items}
+    specs = GridConfig(
+        models=["mock-7b"],
+        confederate_model="mock-7b",
+        n_confederates=[0, 3],
+        unanimity=[Unanimity.UNANIMOUS],
+        privacy=list(Privacy),
+        confederate_style=list(ConfederateStyle),
+    ).expand(items)
+
+    seq, bat = tmp_path / "s.jsonl", tmp_path / "b.jsonl"
+    run_grid(specs, item_map, MockBackend(0.5), seq, progress_every=0, batch_size=1)
+    run_grid(specs, item_map, MockBackend(0.5), bat, progress_every=0, batch_size=16)
+
+    s = {r["trial_id"]: r for r in (json.loads(x) for x in seq.open())}
+    b = {r["trial_id"]: r for r in (json.loads(x) for x in bat.open())}
+    assert s.keys() == b.keys()
+    for tid in s:
+        assert s[tid]["transcript"] == b[tid]["transcript"]
+        assert s[tid]["answer"] == b[tid]["answer"]
+
+
 def test_bare_style_issues_no_confederate_batch():
     items = generate_perceptual_bank(4)
     specs = GridConfig(

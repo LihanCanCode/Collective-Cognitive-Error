@@ -35,16 +35,23 @@ class ConfederateStyle(str, Enum):
 
     BARE: the answer alone, no reasoning -- this is what Asch's confederates did. They stated a
         line and nothing else, so conformity could only be social. The faithful replication arm.
+    FILLER: the answer plus a content-free sentence of comparable length. **The control that makes
+        the BARE/JUSTIFIED contrast interpretable.** Bare turns render as a single short line while
+        justified turns carry a whole sentence, so the two differ in textual salience as well as in
+        argumentation. FILLER holds salience roughly constant and removes only the argument.
     JUSTIFIED: a real model call constrained to the assigned answer, writing its own supporting
         argument. Stronger pressure than Asch, and the multi-agent-realistic condition -- but it
         confounds social conformity with being argued into a position, because the arguments are
         themselves fabricated ("312 is larger than 787 because of the hundreds place").
 
-    Running both separates "I agreed because everyone agreed" from "I agreed because the argument
-    sounded plausible" -- a distinction no prior LLM-conformity paper draws.
+    Pilot (Qwen2.5-7B, identical bank): JUSTIFIED 16.0%, BARE 2.0%. If FILLER tracks BARE, the
+    driver is argumentation; if it tracks JUSTIFIED, the driver was merely having text there.
+    That three-way contrast is the paper's central measurement, and no prior LLM-conformity paper
+    runs any of it.
     """
 
     BARE = "bare"
+    FILLER = "filler"
     JUSTIFIED = "justified"
 
 

@@ -365,6 +365,34 @@ is stronger than the original framing.
 📌 **Also note:** response length went *up* under BARE (41.6 vs 37.9 tokens). Less argumentative
 pressure → more independent reasoning. Consistent with the enumeration hypothesis from session 3.
 
+### 2026-08-06 — Session 6 (Qwen-1.5B + the FILLER control)
+
+**Qwen2.5-1.5B → FAIL (bank), correctly.** Baseline error **42%**, conformity 12% (uninterpretable
+— most "errors under pressure" are just the model not knowing the answer). Also **confidence 97.1
+at 58% accuracy** — extreme overconfidence, worth reporting as its own calibration result (ECE).
+
+⚠️ **Design consequence for the size-scaling arm.** The plan assumed Qwen 1.5B/7B/14B for
+within-family size scaling. 1.5B cannot do the task at ceiling, so calibration will drop most of
+its items and the cross-model **common subset** may be too small for adequate power. Decide after
+running `calibrate.py` on 1.5B:
+- if ≥100 items survive → keep 1.5B, report the reduced common subset honestly
+- if fewer → drop 1.5B and scale 7B/14B/32B instead
+
+Note 1.5B ran on the *old* bank (arithmetic still present, which even 7B failed). The four-subtype
+bank may improve it substantially, so **do not decide before gate run 3**.
+
+**FILLER arm built** — the control the reframing depends on. BARE turns render as one short line
+while JUSTIFIED turns carry a full sentence, so the 16% → 2% gap could be *textual salience*
+rather than argumentation. FILLER = answer + a content-free sentence of comparable length
+(10–20 words, and a test asserts it never contains "because", "than", "largest", "more"...).
+
+| If FILLER ≈ BARE | If FILLER ≈ JUSTIFIED |
+|---|---|
+| argumentation drives it — headline claim holds | mere presence of text drives it — reframe |
+
+BARE and FILLER are both deterministic (`scripted_confederate_text`), so neither needs a
+confederate model call: both arms are nearly free, and compliance holds by construction.
+
 **Next up (in order):**
 0. ⬜ Gate run 3 on the four-subtype bank — confirm `smallest` and `alphabetical` hit ≥95%
    baseline, and check whether they conform like `magnitude` or like `list_count`. This directly

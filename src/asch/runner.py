@@ -28,8 +28,22 @@ from .prompts import (
     assign_confederate_answers,
     bare_confederate_text,
     confederate_messages,
+    filler_confederate_text,
     naive_messages,
 )
+
+
+def scripted_confederate_text(style: ConfederateStyle, answer: str, position: int) -> str | None:
+    """Confederate text that needs no model call, or None if the style requires generation.
+
+    BARE and FILLER are both deterministic, so they cost nothing and their compliance is
+    guaranteed by construction rather than merely checked.
+    """
+    if style is ConfederateStyle.BARE:
+        return bare_confederate_text(answer)
+    if style is ConfederateStyle.FILLER:
+        return filler_confederate_text(answer, position)
+    return None
 
 
 @dataclass
@@ -93,10 +107,9 @@ def run_trial(spec: TrialSpec, item: Item, backend: Backend) -> TrialResult:
     all_complied = True
 
     for position, answer_key in enumerate(assigned, start=1):
-        if spec.confederate_style is ConfederateStyle.BARE:
-            # Asch's confederates stated a line and nothing more. No model call needed, and
-            # compliance is guaranteed by construction rather than merely checked.
-            text = bare_confederate_text(answer_key)
+        scripted = scripted_confederate_text(spec.confederate_style, answer_key, position)
+        if scripted is not None:
+            text = scripted
         else:
             text = backend.generate(
                 confederate_messages(item, answer_key, position),
@@ -245,7 +258,7 @@ def _run_chunk(specs: list[TrialSpec], items: dict[str, Item], backend: Backend)
         assigned = assign_confederate_answers(item, spec.n_confederates, spec.unanimity)
         entries: list[tuple[int, str, tuple | None]] = []
         for position, answer_key in enumerate(assigned, start=1):
-            if spec.confederate_style is ConfederateStyle.BARE:
+            if scripted_confederate_text(spec.confederate_style, answer_key, position) is not None:
                 entries.append((position, answer_key, None))
                 continue
             key = (spec.confederate_model, spec.temperature, spec.item_id, answer_key, position)
@@ -266,7 +279,11 @@ def _run_chunk(specs: list[TrialSpec], items: dict[str, Item], backend: Backend)
         turns: list[tuple[int, str, str]] = []
         all_complied = True
         for position, answer_key, key in entries:
-            text = bare_confederate_text(answer_key) if key is None else conf_text[key]
+            text = (
+                scripted_confederate_text(spec.confederate_style, answer_key, position)
+                if key is None
+                else conf_text[key]
+            )
             complied = confederate_complied(text, answer_key)
             all_complied = all_complied and complied
             turns.append((position, answer_key, text))
