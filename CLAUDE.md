@@ -440,8 +440,66 @@ Alphabetical ordering is a memorised sequence lookup, not a perceptual compariso
 ⚠️ **All trial IDs changed again** (`response_format` is part of `TrialSpec`). Gate run 3 results
 are superseded.
 
+### 2026-08-06 — Session 8 (gate run 4: ✅ CLEAN — and a power problem)
+
+**Qwen2.5-7B, REASONING_FIRST, four-subtype bank → PASS with a perfect baseline.**
+
+| subtype | baseline acc | conformity |
+|---|---|---|
+| closest | 100% | 0.0% |
+| list_count | 100% | 0.0% |
+| magnitude | 100% | 7.7% |
+| smallest | 100% | 15.4% |
+| **overall** | **100%** | **6.0%** |
+
+Discards 0%, breaks 0%, parse failures 0%. **This is the first clean bank.** The
+answer-before-reasoning diagnosis was correct: baseline went 18% → 0%.
+
+**🚨 DESIGN-CRITICAL: the power analysis in RESEARCH_PLAN.md §4 is now invalid.**
+It assumed CR 30% → 15%, giving ~120 trials/cell. At a **6%** base rate, two-proportion power
+at 80%/α=.05 needs:
+
+| contrast | n per cell |
+|---|---|
+| 6% vs 12% (doubling) | **~350** |
+| 6% vs 9% (+50%) | **~1,200** |
+
+So the main grid needs ~3–10× the originally budgeted trials. Two mitigations, both free:
+
+1. **Put the moderators where the headroom is.** Group size / ally / privacy should be tested
+   under **JUSTIFIED** confederates (36% CR in run 3) rather than at the 6% floor. The
+   BARE/FILLER/JUSTIFIED and REASONING/ANSWER_FIRST contrasts are large effects and need far
+   less n — they carry the paper.
+2. **More items.** 50 is tiny; the planned 400+ calibrated bank multiplies power directly.
+
+**⚠️ Confidence is dead as a DV.** 99.9 at n=0, 100.0 at n=3 — fully saturated, zero variance, so
+it cannot correlate with anything. Reportable as a finding (uniform maximal confidence regardless
+of social pressure, and regardless of being wrong) but useless as a dependent measure. Do not
+build an analysis on it.
+
+**Two bugs fixed from the transcripts:**
+- **Placeholder echo** — a naive response literally began `Reasoning: <think it through step by
+  step>`. Models copy angle-bracket placeholders standing in for free text. The instruction now
+  sits on its own line with nothing to copy.
+- **Truncation risk, asymmetric by design.** Under REASONING_FIRST the answer is emitted *last*,
+  so a token cap that cuts reasoning destroys the trial — preferentially on items needing longer
+  reasoning, which would bias the format comparison exactly where it matters. `NAIVE_MAX_TOKENS`
+  raised to 768, and truncation is now **recorded** (`truncated` field, `looks_truncated()`)
+  rather than silently appearing as a format failure.
+
+**Scientific picture as of run 4** — the three findings compose into one contrarian claim:
+
+> On unambiguous tasks, an LLM allowed to deliberate is **far less conformist than humans**
+> (6% vs Asch's 32%). The higher rates reported in the literature appear to come from
+> (a) confederate **argumentation** rather than social agreement (18% → 36%),
+> (b) **snap-judgement** response formats (6% → 36%), and
+> (c) **baseline contamination** on items the model cannot do alone (91.7% "conformity" on
+> alphabetical items it got right only 33% of the time).
+
+Each of those is separately demonstrated and each is a measurement artefact, not conformity.
+
 **Next up (in order):**
-0. ⬜ Gate run 4 on the four-subtype bank — confirm `smallest` and `alphabetical` hit ≥95%
+0. ⬜ Optional A four-arm run on the clean bank — confirm `smallest` and `alphabetical` hit ≥95%
    baseline, and check whether they conform like `magnitude` or like `list_count`. This directly
    tests the enumeration hypothesis above.
 0b. ⬜ **Notebook Cell 8: verify batching on real hardware** before trusting it for the grid. The

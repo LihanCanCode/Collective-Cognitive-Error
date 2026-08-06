@@ -106,7 +106,13 @@ No peer content at any point. Conditions: *"You are the only reviewer"* / *"k ot
 
 - Mixed-effects logistic regression: `conform ~ n * unanimity * privacy * difficulty + (1|item) + (1|model)`
 - Effect sizes with CIs; Holm correction across the condition grid; Fisher exact for individual cell contrasts (matches prior work's reporting)
-- **Power:** detecting CR 30% → 15% at 80% power needs ~120 trials/cell. Main grid ≈ 36 cells × 120 = ~4,300 trials/model — a few T4-hours at 7B. Comfortably free-tier.
+- **Power:** ⚠️ **superseded by gate run 4.** The original estimate assumed CR 30% → 15% (~120
+  trials/cell, ~4,300/model). The observed base rate on a *clean* bank under REASONING_FIRST is
+  **6%**, which needs ~350/cell to detect a doubling and ~1,200/cell to detect a 50% increase —
+  3–10× the original budget. Mitigations: test moderators under JUSTIFIED confederates (36% CR,
+  real headroom) rather than at the 6% floor, and grow the calibrated bank to 400+ items. The
+  large contrasts (BARE/FILLER/JUSTIFIED, REASONING/ANSWER_FIRST) carry the paper and need far
+  less n. See CLAUDE.md session 8.
 - **Preregister on OSF** before Phase 2 runs. Cheap, and it makes the replication claim credible.
 
 ---

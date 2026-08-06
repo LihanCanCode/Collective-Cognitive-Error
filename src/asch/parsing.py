@@ -97,6 +97,22 @@ def parse_error_count(text: str) -> int | None:
     return int(match.group(1)) if match else None
 
 
+def looks_truncated(text: str) -> bool:
+    """Heuristic: did generation stop mid-thought before the answer was committed?
+
+    This matters asymmetrically. Under ANSWER_FIRST the answer is already emitted, so truncation
+    costs only the rationale. Under REASONING_FIRST the answer comes last, so a truncated response
+    loses it entirely and the trial is discarded -- and truncation correlates with *long*
+    reasoning, i.e. with harder items. Silently dropping those would bias the format comparison
+    exactly where it matters, so truncation is recorded rather than left to look like a format
+    failure.
+    """
+    stripped = text.rstrip()
+    if not stripped:
+        return False
+    return ANSWER_RE.search(text) is None and stripped[-1] not in ".!?\"')"
+
+
 def effort_proxy(text: str) -> int:
     """Whitespace token count of the response, used as the effort/vigilance proxy.
 

@@ -51,9 +51,13 @@ _FORMAT_BLOCK = {
         "Confidence: <integer 0-100>\n"
         "Reasoning: <your reasoning>"
     ),
+    # No angle-bracket placeholder after "Reasoning:" -- models echo it verbatim. Observed:
+    # "Reasoning: <think it through step by step>\nTo determine which number is closest...".
+    # The instruction goes on its own line instead, where there is nothing to copy.
     "reasoning_first": (
+        "Think through the problem step by step, then commit to an answer.\n\n"
         "Respond in exactly this format:\n"
-        "Reasoning: <think it through step by step>\n"
+        "Reasoning: your step-by-step reasoning\n"
         "Answer: <letter>\n"
         "Confidence: <integer 0-100>"
     ),

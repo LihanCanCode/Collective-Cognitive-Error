@@ -587,6 +587,30 @@ def test_parser_takes_the_final_answer_not_an_intermediate_thought():
     assert parse_answer(text).answer == "C"
 
 
+def test_reasoning_prompt_has_no_placeholder_to_echo(item: Item):
+    """Models copy angle-bracket placeholders verbatim.
+
+    Observed: "Reasoning: <think it through step by step>\\nTo determine which number is...".
+    The letter placeholder after "Answer:" is fine -- it is replaced, not echoed -- but a
+    placeholder standing in for free text invites the model to repeat it.
+    """
+    from src.asch.config import ResponseFormat
+
+    system = naive_messages(item, [], Privacy.PUBLIC, ResponseFormat.REASONING_FIRST)[0]["content"]
+    assert "<think" not in system
+    assert "Reasoning: <" not in system
+
+
+def test_truncation_is_detected_not_silently_dropped():
+    """Truncation biases REASONING_FIRST specifically, so it must be measurable."""
+    from src.asch.parsing import looks_truncated
+
+    assert looks_truncated("Reasoning: the difference is 19, so 458 is the closest number to")
+    assert not looks_truncated("Reasoning: 458 is closest.\nAnswer: B\nConfidence: 90")
+    assert not looks_truncated("I cannot determine this.")  # complete, just unparseable
+    assert not looks_truncated("")
+
+
 def test_response_format_changes_trial_identity(spec: TrialSpec):
     from dataclasses import replace
 

@@ -1,4 +1,4 @@
-"""Resumable trial execution.
+﻿"""Resumable trial execution.
 
 The runner assumes the session will die. Colab and Kaggle disconnect without warning, so every
 completed trial is appended to JSONL and flushed immediately, and nothing is accumulated in
@@ -23,7 +23,13 @@ from pathlib import Path
 from .backends import Backend
 from .config import ConfederateStyle, TrialSpec, Unanimity
 from .items import Item
-from .parsing import classify_stance, confederate_complied, effort_proxy, parse_answer
+from .parsing import (
+    classify_stance,
+    confederate_complied,
+    effort_proxy,
+    looks_truncated,
+    parse_answer,
+)
 from .prompts import (
     assign_confederate_answers,
     bare_confederate_text,
@@ -31,6 +37,14 @@ from .prompts import (
     filler_confederate_text,
     naive_messages,
 )
+
+
+# Generous enough that step-by-step reasoning finishes and reaches the answer line. Under
+# REASONING_FIRST the answer is emitted LAST, so a token cap that truncates reasoning destroys the
+# trial -- and it would do so preferentially on items needing longer reasoning, biasing the
+# format comparison exactly where it matters. Truncations are also recorded, not just avoided.
+NAIVE_MAX_TOKENS = 768
+CONFEDERATE_MAX_TOKENS = 200
 
 
 def scripted_confederate_text(style: ConfederateStyle, answer: str, position: int) -> str | None:
@@ -59,6 +73,7 @@ class TrialResult:
     response_tokens: int
     raw_response: str
     transcript: list[dict]
+    truncated: bool = False
     error: str | None = None
 
     def to_record(self) -> dict:
@@ -74,6 +89,7 @@ class TrialResult:
             response_tokens=self.response_tokens,
             raw_response=self.raw_response,
             transcript=self.transcript,
+            truncated=self.truncated,
             error=self.error,
         )
         return record
@@ -115,7 +131,7 @@ def run_trial(spec: TrialSpec, item: Item, backend: Backend) -> TrialResult:
                 confederate_messages(item, answer_key, position),
                 model=spec.confederate_model,
                 temperature=spec.temperature,
-                max_tokens=200,
+                max_tokens=CONFEDERATE_MAX_TOKENS,
                 seed=_seed_for(spec, position),
             ).text
 
@@ -136,7 +152,7 @@ def run_trial(spec: TrialSpec, item: Item, backend: Backend) -> TrialResult:
         naive_messages(item, turns, spec.privacy, spec.response_format),
         model=spec.model,
         temperature=spec.temperature,
-        max_tokens=512,
+        max_tokens=NAIVE_MAX_TOKENS,
         seed=_seed_for(spec, 0),
         oracle=item.correct,
     )
@@ -158,6 +174,7 @@ def run_trial(spec: TrialSpec, item: Item, backend: Backend) -> TrialResult:
         response_tokens=effort_proxy(gen.text),
         raw_response=gen.text,
         transcript=transcript,
+        truncated=looks_truncated(gen.text),
     )
 
 
@@ -266,7 +283,7 @@ def _run_chunk(specs: list[TrialSpec], items: dict[str, Item], backend: Backend)
             entries.append((position, answer_key, key))
         plans.append((spec, entries))
 
-    conf_text = _generate_grouped(backend, conf_prompts, max_tokens=200)
+    conf_text = _generate_grouped(backend, conf_prompts, max_tokens=CONFEDERATE_MAX_TOKENS)
 
     # Phase 2: assemble transcripts, then batch the naive turns.
     naive_prompts: dict[tuple, list[dict[str, str]]] = {}
@@ -301,7 +318,7 @@ def _run_chunk(specs: list[TrialSpec], items: dict[str, Item], backend: Backend)
         naive_prompts[nkey] = naive_messages(item, turns, spec.privacy, spec.response_format)
         naive_oracles[nkey] = item.correct
 
-    naive_text = _generate_grouped(backend, naive_prompts, max_tokens=512, oracles=naive_oracles)
+    naive_text = _generate_grouped(backend, naive_prompts, max_tokens=NAIVE_MAX_TOKENS, oracles=naive_oracles)
 
     records: list[dict] = []
     for spec, _ in plans:
