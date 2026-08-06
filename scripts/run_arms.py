@@ -58,6 +58,11 @@ CELLS = [
     (ConfederateStyle.BARE, ResponseFormat.ANSWER_FIRST, "no argument, no deliberation"),
 ]
 
+# Cells 0 and 3 are the two extremes and form the "combined" contrast -- by far the strongest
+# effect (p<0.0001, needed n=19-32 on the 200-item run). --cells 0,3 gets a real sequential
+# confirmation of the headline claim in a fraction of the time of the full 5-cell sweep, when
+# time is short. Not a substitute for the full sweep; a legitimate reduced-scope subset of it.
+
 
 def main() -> None:
     ap = argparse.ArgumentParser(
@@ -71,6 +76,11 @@ def main() -> None:
                          "underpowered for these contrasts")
     ap.add_argument("--n-items", type=int, default=0, help="0 = whole bank")
     ap.add_argument("--n-confederates", type=int, default=3)
+    ap.add_argument("--cells", default="", help="comma-separated indices into CELLS "
+                    "(0=justified+answer_first, 1=justified+reasoning_first, "
+                    "2=filler+reasoning_first, 3=bare+reasoning_first, "
+                    "4=bare+answer_first). Empty = all 5. '0,3' runs just the two "
+                    "extremes -- the strongest, cheapest-to-confirm contrast.")
     ap.add_argument("--batch-size", type=int, default=1,
                     help="1 (default) = sequential, safe for reported numbers. >1 uses batched "
                          "GPU inference, which can flip a near-tied greedy decision (see "
@@ -89,10 +99,16 @@ def main() -> None:
     item_map = {i.item_id: i for i in items}
     slug = model_slug(args.model)
 
+    selected = CELLS
+    if args.cells:
+        indices = [int(x) for x in args.cells.split(",")]
+        selected = [CELLS[i] for i in indices]
+        print(f"[run_arms] running {len(selected)}/5 cells: {indices}")
+
     backend = build_backend(args.backend, args.model, 0.3, args.dtype)
     rows = []
     try:
-        for style, fmt, label in CELLS:
+        for style, fmt, label in selected:
             out = args.out_dir / f"{slug}__{style.value}__{fmt.value}.jsonl"
             print(f"\n{'=' * 78}\n{style.value} x {fmt.value}  ({label})\n{'=' * 78}")
 

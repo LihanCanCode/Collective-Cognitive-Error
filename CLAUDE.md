@@ -684,10 +684,18 @@ to err on for a claim going in a paper. Reports fabrication rate **conditional o
 separately for pressured (n>0) vs spontaneous (n=0) errors — the comparison that shows whether
 social pressure induces confabulation specifically, not just more errors. 9 new tests, 80 total.
 
+**`--cells` flag added to `run_arms.py`** for time-boxed confirmation: `--cells 0,3` runs only the
+two extremes (justified+answer_first, bare+reasoning_first) — the "combined" contrast, by far the
+strongest effect (p<0.0001, needed n=19-32 on the 200-item run). A real sequential confirmation in
+a fraction of the full 5-cell sweep's time; not a substitute for it, a legitimate reduced subset.
+`_interpret()` already degrades gracefully when cells 1/2 are absent (prints only what's computable).
+
 **Next up (in order):**
-0. ⬜ **Sequential confirmatory run** (`run_arms.py`, now defaults to `--batch-size 1`) on Qwen,
-   Mistral, Phi-3.5 — the numbers that actually go in the paper. ~4-5h/model, resumable.
-1. ⬜ Run `scripts/mine_fabrication.py` against the saved `results_arms*` directories once
+0. ⬜ **Time-boxed sequential confirmation** — `run_arms.py --cells 0,3 --n-items 50` on Qwen
+   (cleanest baseline). ~45-70 min. Confirms the headline contrast is not a batching artefact.
+1. ⬜ **Full sequential confirmatory run** (all 5 cells, 200 items, `--batch-size 1` default) on
+   Qwen, Mistral, Phi-3.5 — the numbers that actually go in the paper. ~4-5h/model, resumable.
+2. ⬜ Run `scripts/mine_fabrication.py` against the saved `results_arms*` directories once
    downloaded/persisted — cheap, no GPU, can run locally on the JSONL.
 1. ⬜ Calibrate a HARD tier (`--samples 10` for finer granularity) and re-run the arms on it — confirm `smallest` and `alphabetical` hit ≥95%
    baseline, and check whether they conform like `magnitude` or like `list_count`. This directly
