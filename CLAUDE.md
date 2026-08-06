@@ -632,9 +632,63 @@ Keep it for a quick directional check on a new model before committing hours to 
 It does NOT establish real-GPU equivalence and must not be cited as if it did — the docstrings in
 `runner.py` and `run_arms.py` now say so explicitly.
 
+### 2026-08-07 — Session 13 (2-model confirmation; Study 2 miner; plan correction)
+
+**200-item arm sweep completed on 2 model families (batched/fastlook run, provisional numbers,
+qualitative pattern very unlikely to be an artefact given the effect sizes):**
+
+| | Qwen2.5-7B | Mistral-7B-v0.3 |
+|---|---|---|
+| justified+answer_first | 30.0% CR | 81.1% CR (excess 59.6%) |
+| justified+reasoning_first | 3.5% CR | 65.8% CR (excess 55.3%) |
+| filler+reasoning_first | 0.0% CR | 9.0% CR (excess -1.5%) |
+| bare+reasoning_first | 0.0% CR | 13.0% CR (excess 3.0%) |
+| combined test | p=0.0000, need n=19 | p=0.0000, need n=5 |
+| baseline error (n=0) | 0-1.5% (clean) | 12.5-23% (NOT clean) |
+
+**The dissolution replicates on a second, architecturally distinct model family, with p<0.0001.**
+Mistral's baseline error means its bank was uncalibrated for it — but this is exactly the scenario
+`excess_conformity` (session 9) was built for, and it holds up: excess conformity still shows the
+same collapse pattern (59.6% → -1.5%/3.0%) net of Mistral's own unaided pull toward the distractor.
+**Report excess, not raw CR, as the primary cross-model statistic** wherever baseline error is
+non-trivial.
+
+⚠️ **Gemma failed — gated repo, 401.** Swapped the notebook's third model to
+`microsoft/Phi-3.5-mini-instruct` (ungated). Gemma line kept commented with instructions if an
+HF token becomes available.
+
+⚠️ **This run used the OLD batched Cell 10** (in flight before the session-12 sequential-default
+fix landed) — throughput (~0.9-1.7 tr/s) matches batching, not sequential (~0.1-0.2 tr/s). Treat
+as strong provisional evidence, not final paper numbers. Given effect sizes are now tens of
+percentage points (not the fragile single digits from the 50-item pilot), batching noise is
+very unlikely to overturn the qualitative story — but a sequential confirmatory run is still owed
+before anything goes in a table.
+
+**Plan correction, in response to an outdated externally-sourced suggestion the user brought in:**
+the suggestion assumed the strongest result was "subtype-dependent Asch replication on magnitude
+items" and recommended running the full Study 1 moderator battery (group size × ally × privacy ×
+kinship) before anything else. That is stale — session 9-12 superseded it. The actual strongest,
+now cross-model-replicated result is the **measurement-artefact dissolution**
+(argumentation + snap-judgement format explain the effect; both collapse it when removed). The
+full moderator battery is **deprioritized for this paper** — large combinatorial space, would not
+strengthen the core claim, is better scoped as follow-up work. See response to user for full
+reasoning.
+
+**Study 2 built as a data-mining pass over existing transcripts — no new GPU generation needed.**
+`src/asch/fabrication.py` + `scripts/mine_fabrication.py`. Ground-truth-verifiable, not
+LLM-judged: every item is synthetic with known values, so "did the response assert the
+distractor's literal value satisfies the item's superlative, in the model's own words, same
+sentence" is mechanically decidable. Deliberately conservative (sentence-scoped, exact substring
+match) — undercounts subtle fabrication, essentially never over-counts, which is the right side
+to err on for a claim going in a paper. Reports fabrication rate **conditional on being wrong**,
+separately for pressured (n>0) vs spontaneous (n=0) errors — the comparison that shows whether
+social pressure induces confabulation specifically, not just more errors. 9 new tests, 80 total.
+
 **Next up (in order):**
-0. ⬜ `run_arms.py` (sequential, default) on 3 model families with the **200-item** bank — the
-   core table. **Highest value run in the project.** Budget ~4-5h/model; split across sessions.
+0. ⬜ **Sequential confirmatory run** (`run_arms.py`, now defaults to `--batch-size 1`) on Qwen,
+   Mistral, Phi-3.5 — the numbers that actually go in the paper. ~4-5h/model, resumable.
+1. ⬜ Run `scripts/mine_fabrication.py` against the saved `results_arms*` directories once
+   downloaded/persisted — cheap, no GPU, can run locally on the JSONL.
 1. ⬜ Calibrate a HARD tier (`--samples 10` for finer granularity) and re-run the arms on it — confirm `smallest` and `alphabetical` hit ≥95%
    baseline, and check whether they conform like `magnitude` or like `list_count`. This directly
    tests the enumeration hypothesis above.

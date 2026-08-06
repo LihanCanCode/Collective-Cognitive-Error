@@ -8,14 +8,41 @@
 
 ---
 
-> **⚠️ Reframing, 2026-08-06 (pilot data).** A bare-assertion control changed the headline claim.
-> On an identical bank, Qwen2.5-7B conformed at **16%** when confederates supplied arguments and
-> **2%** when they stated only an answer — which is what Asch's confederates did, and his humans
-> still conformed at 32%. So the effect the LLM-conformity literature reports may be **persuasion
-> by plausible-sounding reasoning, not social conformity**. No prior paper (Choi et al. 2025;
-> Bellina et al. 2026; Shehata & Li 2026) runs a bare control, so none can separate the two.
-> Study 1 below now leads with the BARE × JUSTIFIED contrast. See CLAUDE.md for the data and
-> caveats.
+> **⚠️ Reframing #2, 2026-08-07 (200-item, 2-model confirmation).** The measurement-artefact
+> dissolution now **replicates on a second, architecturally distinct model family** (Mistral-7B,
+> not just Qwen) with p<0.0001. This is now the load-bearing result of the paper, not a side
+> arm. **Consequence: the original Study 1 moderator battery (group size × ally × privacy ×
+> kinship) is deprioritized for this paper.** It was designed when the headline claim was "Asch
+> replicates on LLMs, here are the boundary conditions" — with the claim now "the reported effect
+> is largely two measurement artefacts, and here is the dissolution," the moderator battery adds
+> combinatorial cost without strengthening that core claim. It remains valuable as follow-up work
+> (a paper in its own right, given the Study 1 harness already exists) but is not on the critical
+> path to submission. See CLAUDE.md session 13 for the full reasoning and the numbers.
+>
+> **⚠️ Reframing #1, 2026-08-06 (50-item pilot).** A bare-assertion control changed the headline
+> claim. On an identical bank, Qwen2.5-7B conformed at **16%** when confederates supplied
+> arguments and **2%** when they stated only an answer — which is what Asch's confederates did,
+> and his humans still conformed at 32%. So the effect the LLM-conformity literature reports may
+> be **persuasion by plausible-sounding reasoning, not social conformity**. No prior paper (Choi
+> et al. 2025; Bellina et al. 2026; Shehata & Li 2026) runs a bare control, so none can separate
+> the two. Superseded in scale by the 200-item run above, but the mechanism is the same.
+
+## 0a. Current scope for THIS paper (as of 2026-08-07)
+
+**In scope, load-bearing:**
+1. The measurement-artefact dissolution (arm sweep: BARE/FILLER/JUSTIFIED × REASONING/ANSWER_FIRST)
+   — reproduces the literature's magnitude, then dissolves it. Replicated on 2+ model families.
+2. Study 2, reframed as a mined-transcript analysis (`fabrication.py`) rather than a fresh
+   experimental arm: ground-truth-verifiable fabrication rate, conditional on being wrong,
+   pressured vs spontaneous. Costs no additional GPU time — it runs on Study 1's own transcripts.
+
+**Out of scope for this paper, deferred to follow-up work:**
+- The full Study 1 moderator battery (group size sweep, ally/incompetent-dissenter, privacy,
+  kinship) — large combinatorial space, does not strengthen the dissolution claim, better scoped
+  as its own paper given the harness already supports it.
+- Study 3 (mere-presence / bystander effect) — the clean, unpublished-gap angle from the original
+  scoping notes, but a separate experimental arm with its own item type (document review, not
+  perceptual comparison). Natural next paper once this one is submitted.
 
 ## 0. The claim we are making
 
