@@ -605,9 +605,36 @@ result at small n means **underpowered, not null**, and reporting point estimate
 exactly the wrong reading. This project has already produced one fake result from misreading a
 number (alphabetical, 91.7%).
 
+### 2026-08-06 — Session 12 (🚨 batching diverges from sequential on real GPU)
+
+**Cell 8 finding: batched vs sequential HF generation disagree on real hardware.** Same config
+(Qwen2.5-7B, justified+reasoning_first, 50 items), diffed cell-for-cell: **16/100 raw-text
+mismatches.** Cause: batched GPU matmul uses a different floating-point reduction order than a
+single-example forward pass, which can flip a near-tied greedy argmax even at T=0 with correct
+left-padding (verified — this is not the padding bug it would first look like).
+
+⚠️ **The original 16/100 number overstated the problem.** It diffed `raw_response` verbatim, which
+flags *any* wording difference — including cases where the model reaches the identical answer via
+different phrasing. Built `scripts/compare_runs.py` to separate **answer-level** mismatches (the
+model concluded differently — the only kind that matters) from **text-only** ones (same
+conclusion, different words — expected, harmless). Cell 8 now uses it.
+
+**Consequence: `run_arms.py --batch-size` now defaults to 1 (sequential).** At the effect sizes
+this project measures (single-digit-percent conformity), even a small answer-level flip rate can
+move a reported number, and these are the figures that go in the paper. Sequential and resumable;
+~4-5h/model on a T4, fits the 7-week timeline easily since it's resumable across sessions.
+
+Batching is **not removed** — it moved to an explicitly separate "Optional C: fast look" cell
+that writes to a `_fastlook` directory, so its numbers can never be mistaken for reportable ones.
+Keep it for a quick directional check on a new model before committing hours to it sequentially.
+
+⚠️ **`test_batched_matches_sequential` in the test suite only proves mock-backend equivalence.**
+It does NOT establish real-GPU equivalence and must not be cited as if it did — the docstrings in
+`runner.py` and `run_arms.py` now say so explicitly.
+
 **Next up (in order):**
-0. ⬜ `run_arms.py` on 3 model families with the **200-item** bank — the core table.
-   **Highest value run in the project.**
+0. ⬜ `run_arms.py` (sequential, default) on 3 model families with the **200-item** bank — the
+   core table. **Highest value run in the project.** Budget ~4-5h/model; split across sessions.
 1. ⬜ Calibrate a HARD tier (`--samples 10` for finer granularity) and re-run the arms on it — confirm `smallest` and `alphabetical` hit ≥95%
    baseline, and check whether they conform like `magnitude` or like `list_count`. This directly
    tests the enumeration hypothesis above.

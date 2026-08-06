@@ -71,7 +71,10 @@ def main() -> None:
                          "underpowered for these contrasts")
     ap.add_argument("--n-items", type=int, default=0, help="0 = whole bank")
     ap.add_argument("--n-confederates", type=int, default=3)
-    ap.add_argument("--batch-size", type=int, default=1)
+    ap.add_argument("--batch-size", type=int, default=1,
+                    help="1 (default) = sequential, safe for reported numbers. >1 uses batched "
+                         "GPU inference, which can flip a near-tied greedy decision (see "
+                         "scripts/compare_runs.py) -- exploratory use only.")
     ap.add_argument("--out-dir", type=Path, default=_REPO_ROOT / "results" / "arms")
     args = ap.parse_args()
 

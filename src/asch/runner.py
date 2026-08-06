@@ -210,8 +210,16 @@ def run_grid(
     """Execute every spec not already present in ``results_path``. Returns count executed.
 
     ``batch_size > 1`` switches to the two-phase batched path (see ``_run_chunk``), which is what
-    makes the full grid tractable. Results are identical either way -- enforced by
-    test_batched_matches_sequential -- so batching is purely a throughput choice.
+    makes the full grid tractable. Results are identical either way on the mock backend, enforced
+    by test_batched_matches_sequential.
+
+    ⚠️ That guarantee does NOT extend to real GPU inference. Verified empirically (see
+    scripts/compare_runs.py): batched matrix multiplication uses a different floating-point
+    reduction order than a single-example forward pass, which can occasionally flip a near-tied
+    greedy argmax even at temperature 0 with correct left-padding. Rare, but at the single-digit
+    effect sizes this project measures, a few flipped trials can move a reported number. Use
+    batch_size=1 for any run whose numbers will be reported; batch_size>1 for throughput on
+    exploratory passes only.
     """
     results_path.parent.mkdir(parents=True, exist_ok=True)
     done = completed_trial_ids(results_path) if resume else set()
