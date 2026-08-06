@@ -81,6 +81,9 @@ def main() -> None:
                     default=ConfederateStyle.JUSTIFIED.value,
                     help="bare = answer only (faithful Asch, no model call); "
                          "justified = confederates write their own supporting argument")
+    ap.add_argument("--batch-size", type=int, default=1,
+                    help="1 = sequential. >1 uses the two-phase batched path; results are "
+                         "identical, only throughput changes. Try 16-32 on a T4.")
     ap.add_argument("--no-resume", action="store_true")
     args = ap.parse_args()
 
@@ -104,7 +107,11 @@ def main() -> None:
 
     backend = build_backend(args.backend, args.model, args.mock_conformity, args.dtype)
     try:
-        executed = run_grid(specs, item_map, backend, args.out, resume=not args.no_resume)
+        executed = run_grid(
+            specs, item_map, backend, args.out,
+            resume=not args.no_resume,
+            batch_size=args.batch_size,
+        )
     finally:
         backend.close()
     print(f"[smoke] executed {executed} new trials -> {args.out}\n")

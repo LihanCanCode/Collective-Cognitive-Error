@@ -55,6 +55,40 @@ class Backend(ABC):
         comment -- would silently invalidate every trial the moment it ran against a live model.
         """
 
+    def generate_batch(
+        self,
+        batch: list[list[Message]],
+        *,
+        model: str,
+        temperature: float = 0.0,
+        max_tokens: int = 512,
+        oracles: list[str | None] | None = None,
+    ) -> list[Generation]:
+        """Complete many transcripts at once, in order.
+
+        The default is a sequential loop, so every backend works without implementing this.
+        Backends that can genuinely batch (GPU inference) override it -- that is where the P2
+        throughput comes from.
+
+        ``oracles`` is the per-item out-of-band ground truth, used only by ``MockBackend``; real
+        backends ignore it and never receive it in a prompt.
+
+        Note that batching gives up per-request seeding: one seed covers the batch. That is
+        immaterial at temperature 0, which is what the main grid uses, and acceptable for the
+        temperature-0.7 robustness subset where variation is the point.
+        """
+        oracle_list = oracles or [None] * len(batch)
+        return [
+            self.generate(
+                messages,
+                model=model,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                oracle=oracle,
+            )
+            for messages, oracle in zip(batch, oracle_list)
+        ]
+
     def close(self) -> None:  # pragma: no cover - most backends need no teardown
         pass
 
@@ -95,7 +129,15 @@ class MockBackend(Backend):
         oracle: str | None = None,
     ) -> Generation:
         prompt = "\n".join(m["content"] for m in messages)
-        rng = random.Random(_stable_seed(prompt if seed is None else f"{prompt}{seed}"))
+
+        # At temperature 0 a real model decodes greedily: output is a function of the prompt
+        # alone, and the seed is irrelevant. The mock must match that, otherwise the sequential
+        # path (which seeds per request) and the batched path (which cannot) would disagree for
+        # a reason no real backend would ever exhibit.
+        effective_seed = None if temperature == 0 else seed
+        rng = random.Random(
+            _stable_seed(prompt if effective_seed is None else f"{prompt}{effective_seed}")
+        )
 
         # Coupled to prompts.confederate_messages by wording. If that prompt is reworded, this
         # regex must move with it or the mock silently stops role-playing confederates --
@@ -187,6 +229,27 @@ class VLLMBackend(Backend):
         out = self._llm.chat([messages], params, use_tqdm=False)
         return Generation(text=out[0].outputs[0].text.strip(), backend=self.name, model=model)
 
+    def generate_batch(
+        self,
+        batch: list[list[Message]],
+        *,
+        model: str,
+        temperature: float = 0.0,
+        max_tokens: int = 512,
+        oracles: list[str | None] | None = None,  # ignored: real models never see ground truth
+    ) -> list[Generation]:
+        """vLLM batches natively via continuous batching -- hand it the whole list."""
+        from vllm import SamplingParams  # noqa: PLC0415
+
+        if not batch:
+            return []
+        params = SamplingParams(temperature=temperature, max_tokens=max_tokens)
+        outs = self._llm.chat(batch, params, use_tqdm=True)
+        return [
+            Generation(text=o.outputs[0].text.strip(), backend=self.name, model=model)
+            for o in outs
+        ]
+
 
 # --------------------------------------------------------------------------------------
 # Transformers (dependable fallback)
@@ -268,6 +331,59 @@ class HFBackend(Backend):
             backend=self.name,
             model=model,
         )
+
+    def generate_batch(
+        self,
+        batch: list[list[Message]],
+        *,
+        model: str,
+        temperature: float = 0.0,
+        max_tokens: int = 512,
+        oracles: list[str | None] | None = None,  # ignored: real models never see ground truth
+    ) -> list[Generation]:
+        """Batched generation with left padding.
+
+        Decoder-only models must be padded on the **left**: with right padding the pad tokens sit
+        between the prompt and the first generated token, so short prompts in the batch generate
+        from padding rather than from their own text. That produces plausible-looking garbage
+        rather than an error, which is the dangerous kind of bug -- hence
+        test_batched_matches_sequential.
+        """
+        if not batch:
+            return []
+
+        torch = self._torch
+        previous_side = self._tokenizer.padding_side
+        self._tokenizer.padding_side = "left"
+        try:
+            texts = [
+                self._tokenizer.apply_chat_template(m, tokenize=False, add_generation_prompt=True)
+                for m in batch
+            ]
+            inputs = self._tokenizer(texts, return_tensors="pt", padding=True).to(
+                self._model.device
+            )
+            with torch.no_grad():
+                out = self._model.generate(
+                    **inputs,
+                    max_new_tokens=min(max_tokens, self.max_new_tokens),
+                    do_sample=temperature > 0,
+                    temperature=temperature if temperature > 0 else None,
+                    top_p=0.95 if temperature > 0 else None,
+                    pad_token_id=self._tokenizer.pad_token_id,
+                )
+        finally:
+            self._tokenizer.padding_side = previous_side
+
+        prompt_len = inputs["input_ids"].shape[-1]
+        return [
+            Generation(
+                text=self._tokenizer.decode(row[prompt_len:], skip_special_tokens=True).strip(),
+                backend=self.name,
+                model=model,
+            )
+            for row in out
+        ]
 
 
 # --------------------------------------------------------------------------------------

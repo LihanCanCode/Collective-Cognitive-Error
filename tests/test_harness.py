@@ -25,7 +25,7 @@ from src.asch.config import (
 from src.asch.items import Item, generate_perceptual_bank, load_bank, save_bank
 from src.asch.parsing import Stance, classify_stance, confederate_complied, parse_answer
 from src.asch.prompts import assign_confederate_answers, confederate_messages, naive_messages
-from src.asch.runner import completed_trial_ids, run_grid, run_trial
+from src.asch.runner import _run_chunk, completed_trial_ids, run_grid, run_trial
 
 
 @pytest.fixture
@@ -355,6 +355,164 @@ def test_a_failing_backend_does_not_abort_the_grid(tmp_path: Path, item: Item):
     assert run_grid(specs, {item.item_id: item}, Exploding(), out, progress_every=0) == len(specs)
     records = [json.loads(line) for line in out.open()]
     assert all(r["error"].startswith("RuntimeError") and not r["valid"] for r in records)
+
+
+# --- batching -------------------------------------------------------------------------
+
+
+def _grid_for_batching(items: list[Item]) -> list[TrialSpec]:
+    return GridConfig(
+        models=["mock-7b"],
+        confederate_model="mock-7b",
+        n_confederates=[0, 2, 3, 5],
+        unanimity=list(Unanimity),
+        privacy=list(Privacy),
+    ).expand(items)
+
+
+def test_batched_matches_sequential(tmp_path: Path):
+    """The load-bearing test for the batched path.
+
+    Batching is a throughput optimisation and must not change a single result. A silent
+    divergence here -- misaligned outputs, wrong padding side, a dedupe collision -- would
+    produce plausible numbers that are simply wrong, which is the failure mode that survives
+    review and ruins a paper.
+    """
+    items = generate_perceptual_bank(12)
+    item_map = {i.item_id: i for i in items}
+    specs = _grid_for_batching(items)
+
+    seq_path, batch_path = tmp_path / "seq.jsonl", tmp_path / "batch.jsonl"
+    run_grid(specs, item_map, MockBackend(0.5), seq_path, progress_every=0, batch_size=1)
+    run_grid(specs, item_map, MockBackend(0.5), batch_path, progress_every=0, batch_size=16)
+
+    seq = {r["trial_id"]: r for r in (json.loads(x) for x in seq_path.open())}
+    bat = {r["trial_id"]: r for r in (json.loads(x) for x in batch_path.open())}
+
+    assert seq.keys() == bat.keys()
+    assert len(seq) == len(specs)
+    for trial_id, expected in seq.items():
+        got = bat[trial_id]
+        for field in ("answer", "stance", "correct_answer", "majority_answer",
+                      "confederates_complied", "valid", "raw_response", "transcript"):
+            assert got[field] == expected[field], f"{field} diverged on {trial_id}"
+
+
+def test_batching_deduplicates_confederate_calls():
+    """Dedupe is where most of the speedup comes from, so verify it actually happens.
+
+    A confederate prompt depends only on (item, assigned answer, position), so every n level
+    reuses positions 1..k with the same assignment. Those must collapse to one call.
+    """
+    calls: list[int] = []
+
+    class Counting(MockBackend):
+        def generate_batch(self, batch, **kwargs):
+            calls.append(len(batch))
+            return super().generate_batch(batch, **kwargs)
+
+    items = generate_perceptual_bank(4)
+    specs = GridConfig(
+        models=["mock-7b"],
+        confederate_model="mock-7b",
+        n_confederates=[2, 3, 5],
+        unanimity=[Unanimity.UNANIMOUS],
+        privacy=[Privacy.PUBLIC],
+    ).expand(items)
+
+    _run_chunk(specs, {i.item_id: i for i in items}, Counting())
+
+    naive_calls = len(specs)
+    confederate_calls_if_naive = sum(s.n_confederates for s in specs)  # 4 items * (2+3+5) = 40
+    assert calls[0] < confederate_calls_if_naive, "confederate prompts were not deduplicated"
+    assert calls[0] == 4 * 5, "should collapse to one call per (item, position) at max n"
+    assert calls[-1] == naive_calls
+
+
+def test_bare_style_issues_no_confederate_batch():
+    items = generate_perceptual_bank(4)
+    specs = GridConfig(
+        models=["mock-7b"],
+        confederate_model="mock-7b",
+        n_confederates=[3],
+        unanimity=[Unanimity.UNANIMOUS],
+        privacy=[Privacy.PUBLIC],
+        confederate_style=[ConfederateStyle.BARE],
+    ).expand(items)
+
+    records = _run_chunk(specs, {i.item_id: i for i in items}, MockBackend(1.0))
+    assert len(records) == len(specs)
+    assert all(r["confederates_complied"] for r in records)
+
+
+def test_batched_runner_resumes(tmp_path: Path):
+    items = generate_perceptual_bank(8)
+    item_map = {i.item_id: i for i in items}
+    specs = _grid_for_batching(items)
+    out = tmp_path / "r.jsonl"
+
+    assert run_grid(specs, item_map, MockBackend(), out, progress_every=0, batch_size=8) == len(specs)
+    assert run_grid(specs, item_map, MockBackend(), out, progress_every=0, batch_size=8) == 0
+
+
+# --- calibration ----------------------------------------------------------------------
+
+
+def test_calibration_tiers_follow_accuracy():
+    from src.asch.calibration import ItemCalibration
+
+    def cal(correct: int, n: int = 5) -> ItemCalibration:
+        return ItemCalibration("i", "magnitude", n, correct, n, "A")
+
+    assert cal(5).tier is Difficulty.EASY
+    assert cal(4).tier is Difficulty.HARD, "4/5 = 80%, the top of the hard band"
+    assert cal(7, 10).tier is Difficulty.HARD
+    assert cal(1, 10).tier is None, "too hard to interpret; drop rather than force a tier"
+    assert cal(9, 10).tier is None, "90% is below ceiling but above the hard band -- ambiguous"
+
+
+def test_calibration_keeps_only_tiered_items():
+    from src.asch.calibration import ItemCalibration, apply_tiers
+
+    items = generate_perceptual_bank(3)
+    cals = [
+        ItemCalibration(items[0].item_id, items[0].subtype, 5, 5, 5, "A"),   # easy
+        ItemCalibration(items[1].item_id, items[1].subtype, 10, 7, 10, "A"),  # hard
+        ItemCalibration(items[2].item_id, items[2].subtype, 5, 0, 5, "B"),    # dropped
+    ]
+    kept = apply_tiers(items, cals)
+    assert [i.item_id for i in kept] == [items[0].item_id, items[1].item_id]
+    assert kept[0].difficulty is Difficulty.EASY
+    assert kept[1].difficulty is Difficulty.HARD
+
+
+def test_calibration_recovers_a_perfect_model():
+    """A model that is always right must yield an all-EASY bank."""
+    from src.asch.calibration import calibrate
+
+    items = generate_perceptual_bank(8)
+    cals = calibrate(items, MockBackend(conformity_prob=0.0), "mock-7b", samples=3, batch_size=4)
+    assert len(cals) == len(items)
+    assert all(c.accuracy == 1.0 for c in cals)
+    assert all(c.tier is Difficulty.EASY for c in cals)
+
+
+def test_calibration_prompt_is_the_control_condition(item: Item):
+    """Calibration accuracy and n=0 control accuracy must measure the same thing."""
+    from src.asch.calibration import _ALONE
+
+    from src.asch.prompts import naive_messages as nm
+
+    assert nm(item, [], _ALONE) == nm(item, [], Privacy.PRIVATE)
+
+
+def test_common_subset_is_the_intersection():
+    from src.asch.calibration import common_subset
+
+    items = generate_perceptual_bank(6)
+    banks = {"a": items[:5], "b": items[2:]}
+    assert common_subset(banks) == {i.item_id for i in items[2:5]}
+    assert common_subset({}) == set()
 
 
 # --- analysis -------------------------------------------------------------------------

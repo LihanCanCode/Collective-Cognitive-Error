@@ -281,10 +281,57 @@ in raw pilot data. The Study 2 fresh-context re-ask is the test that distinguish
 4,300-trial grid, and the full grid is 4–6 models. The runner generates strictly one call at a
 time. Batched generation or current-release vLLM is required **before** P2 launches.
 
+### 2026-08-06 — Session 4 (batching + calibration)
+
+**Batched generation — the P2 blocker is cleared (pending real-hardware confirmation).**
+
+Two-phase design in `runner._run_chunk`:
+- **Phase 1** batches every confederate turn in a chunk. This is sound because a confederate's
+  prompt depends only on (item, assigned answer, position) — confederates never see each other.
+- **Phase 2** batches every naive turn once the transcripts exist.
+
+Two batched passes replace up to n+1 sequential calls per trial. **Deduplication is the bigger
+win than batching itself**: every `n` level reuses positions 1..k with the same assignment, so
+identical prompts collapse to one call (verified: 40 naive confederate calls → 20).
+
+`run_grid(..., batch_size=N)`; `batch_size=1` keeps the sequential path. Results are identical
+either way — `test_batched_matches_sequential` enforces it across 4 n-levels × 3 unanimity ×
+2 privacy × 12 items.
+
+⚠️ **Batching gives up per-request seeding** (one seed per batch). Immaterial at T=0, which is
+the main grid. For the T=0.7 robustness subset, variation is the point, so it is acceptable —
+but exact per-trial reproduction is not available there.
+
+**Mock fidelity bug found by that test:** `MockBackend` keyed its RNG on the seed even at
+temperature 0, so sequential (seeded per request) and batched (unseeded) diverged for a reason no
+real backend exhibits. Real greedy decoding depends on the prompt alone. Fixed — the mock now
+ignores `seed` when `temperature == 0`.
+
+**Calibration pre-pass built** (`src/asch/calibration.py`, `scripts/calibrate.py`). Asks each item
+alone, 5 samples at T=0.7, and tiers it: EASY (≥95%), HARD (60–80%), else dropped. Uses the
+**byte-identical prompt** to the n=0 control, so calibration accuracy and control accuracy measure
+the same thing (there is a test for this).
+
+⚠️ At 5 samples the granularity is coarse — accuracy can only be 0/.2/.4/.6/.8/1.0, so EASY means
+5/5 and HARD means 3/5 or 4/5. Fine for building the easy tier, which is all Study 1 needs. Raise
+to `--samples 10` when the **hard tier itself** is the object of study.
+
+⚠️ `data/calibrated/` is gitignored, but the **final calibrated banks are the experimental
+stimulus** and must be committed or archived before submission — reviewers cannot reproduce the
+study without them.
+
 **Next up (in order):**
 0. ⬜ Gate run 3 on the four-subtype bank — confirm `smallest` and `alphabetical` hit ≥95%
    baseline, and check whether they conform like `magnitude` or like `list_count`. This directly
    tests the enumeration hypothesis above.
+0b. ⬜ **Notebook Cell 8: verify batching on real hardware** before trusting it for the grid. The
+   pytest equivalence test uses the mock and cannot catch a GPU-side bug — the dangerous one is
+   padding side (decoder-only models need LEFT padding; right padding makes short prompts in a
+   batch generate from pad tokens, producing plausible garbage rather than an error). Cell 8 runs
+   the same 100 trials batched and diffs them against the sequential results. Also report the
+   speedup — that number sizes the P2 grid.
+0c. ⬜ **Notebook Cell 9: calibration** on Qwen-7B. Watch whether any subtype loses most of its
+   items: a skewed surviving bank moves the headline conformity number on its own.
 1. ⬜ **Run the day-3 smoke test on a real model** (Kaggle, Qwen2.5-7B-Instruct). THE gate.
    `python scripts/run_smoke.py --backend hf --model Qwen/Qwen2.5-7B-Instruct`
    Pass = conformity rate roughly 5–70% **and** baseline error <10%. The script prints an
