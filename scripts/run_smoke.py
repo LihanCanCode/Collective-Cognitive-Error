@@ -59,11 +59,12 @@ PASS_LOW, PASS_HIGH = 0.05, 0.70
 MAX_BASELINE_ERROR = 0.10
 
 
-def build_backend(kind: str, model: str, conformity_prob: float, dtype: str = "float16"):
+def build_backend(kind: str, model: str, conformity_prob: float, dtype: str = "float16",
+                   attn_implementation: str = "eager"):
     if kind == "mock":
         return MockBackend(conformity_prob=conformity_prob)
     if kind == "hf":
-        return HFBackend(model=model, dtype=dtype)
+        return HFBackend(model=model, dtype=dtype, attn_implementation=attn_implementation)
     if kind == "vllm":
         return VLLMBackend(model=model)
     if kind == "api":
@@ -76,6 +77,11 @@ def main() -> None:
     ap.add_argument("--backend", choices=["mock", "hf", "vllm", "api"], default="mock")
     ap.add_argument("--model", default="mock-7b")
     ap.add_argument("--dtype", default="float16", help="hf backend only")
+    ap.add_argument("--attn-implementation", default="eager",
+                    help="hf backend only. 'eager' (default) is universally supported; "
+                         "'sdpa'/'flash_attention_2' are faster but some architectures "
+                         "(observed: Phi-3.5-mini) raise on every call under the installed "
+                         "flash-attention build.")
     ap.add_argument("--confederate-model", default=None, help="defaults to --model (same family)")
     # Defaults anchor to the repo root, not the working directory, so the script behaves the
     # same whether it is run from the repo, from /kaggle/working, or from a notebook.
@@ -117,7 +123,9 @@ def main() -> None:
     specs = grid.expand(items)
     print(f"[smoke] {len(items)} items -> {len(specs)} trials on {args.model} ({args.backend})")
 
-    backend = build_backend(args.backend, args.model, args.mock_conformity, args.dtype)
+    backend = build_backend(
+        args.backend, args.model, args.mock_conformity, args.dtype, args.attn_implementation
+    )
     try:
         executed = run_grid(
             specs, item_map, backend, args.out,

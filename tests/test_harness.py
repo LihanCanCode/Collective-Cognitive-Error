@@ -335,6 +335,68 @@ def test_mock_is_correct_in_the_control_condition(item: Item, spec: TrialSpec):
     assert result.majority_answer is None
 
 
+def test_resume_regenerates_when_generation_mode_differs(tmp_path: Path, item: Item):
+    """Regression guard for the session-15 trap.
+
+    Pointing a nominally-sequential run at a directory that already holds BATCHED results must
+    NOT silently report 'already done' -- that produces zero new (trustworthy) generations while
+    looking identical to a real confirmatory run. This happened in practice on real Kaggle data.
+    """
+    specs = GridConfig(models=["mock-7b"], confederate_model="mock-7b",
+                       n_confederates=[0, 3], unanimity=[Unanimity.UNANIMOUS],
+                       privacy=[Privacy.PUBLIC]).expand([item])
+    out = tmp_path / "r.jsonl"
+    backend = MockBackend()
+
+    batched = run_grid(specs, {item.item_id: item}, backend, out, batch_size=16, progress_every=0)
+    assert batched == len(specs)
+
+    # Same directory, now nominally sequential -- must regenerate, not skip.
+    seq = run_grid(specs, {item.item_id: item}, backend, out, batch_size=1, progress_every=0)
+    assert seq == len(specs), "sequential resume must not trust batched-mode records"
+
+    records = [json.loads(line) for line in out.open()]
+    modes = {r["trial_id"]: r["generation_mode"] for r in records}
+    # Later (sequential) writes appended after the batched ones; last write per id wins downstream
+    # analysis reads the file in order, so what matters is that a sequential record now EXISTS.
+    assert "sequential" in modes.values()
+
+
+def test_resume_within_the_same_mode_is_still_idempotent(tmp_path: Path, item: Item):
+    """The mode-awareness fix must not break ordinary resumability within one mode."""
+    specs = GridConfig(models=["mock-7b"], confederate_model="mock-7b",
+                       n_confederates=[0, 3], unanimity=[Unanimity.UNANIMOUS],
+                       privacy=[Privacy.PUBLIC]).expand([item])
+    out = tmp_path / "r.jsonl"
+    backend = MockBackend()
+
+    first = run_grid(specs, {item.item_id: item}, backend, out, batch_size=1, progress_every=0)
+    second = run_grid(specs, {item.item_id: item}, backend, out, batch_size=1, progress_every=0)
+    assert first == len(specs)
+    assert second == 0, "resuming in the SAME mode must still skip completed work"
+
+
+def test_records_are_stamped_with_the_mode_that_produced_them(item: Item, spec: TrialSpec):
+    seq_record = run_trial(spec, item, MockBackend()).to_record()
+    assert seq_record["generation_mode"] == "sequential"
+
+    from src.asch.runner import _run_chunk
+    batched_records = _run_chunk([spec], {item.item_id: item}, MockBackend())
+    assert batched_records[0]["generation_mode"] == "batched"
+
+
+def test_completed_trial_ids_filters_by_mode(tmp_path: Path):
+    path = tmp_path / "r.jsonl"
+    with path.open("w", encoding="utf-8") as f:
+        f.write(json.dumps({"trial_id": "a", "generation_mode": "batched"}) + "\n")
+        f.write(json.dumps({"trial_id": "b", "generation_mode": "sequential"}) + "\n")
+        f.write(json.dumps({"trial_id": "c"}) + "\n")  # pre-fix record, no mode at all
+
+    assert completed_trial_ids(path, mode="sequential") == {"b"}
+    assert completed_trial_ids(path, mode="batched") == {"a"}
+    assert completed_trial_ids(path, mode=None) == {"a", "b", "c"}, "no filter = old behaviour"
+
+
 def test_runner_resumes_and_is_idempotent(tmp_path: Path, item: Item):
     specs = GridConfig(models=["mock-7b"], confederate_model="mock-7b",
                        n_confederates=[0, 3], unanimity=[Unanimity.UNANIMOUS],

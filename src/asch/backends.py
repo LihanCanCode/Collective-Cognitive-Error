@@ -265,11 +265,28 @@ class HFBackend(Backend):
     throughput does not matter and reliability does. Use ``VLLMBackend`` for the full grid.
 
     ``device_map="auto"`` shards across both Kaggle T4s, which is what makes a 7B in fp16 fit.
+
+    ``attn_implementation="eager"`` by default. transformers auto-selects flash-attention/SDPA
+    when available, and some architectures (observed: Phi-3.5-mini's sliding-window attention)
+    are advertised as unsupported by the installed flash-attention build -- when that happens
+    every single generate() call raises, which on the sequential path (used for anything whose
+    numbers get reported) means 100% of trials silently fail and only show up as "n=0" at the
+    end of an hours-long unattended run. Eager is slower but is the universally-supported
+    fallback; this backend already trades throughput for reliability (see class docstring), so
+    the correctness-first choice is consistent with why HFBackend exists at all. Override via
+    ``attn_implementation=`` if a specific model needs otherwise.
     """
 
     name = "hf"
 
-    def __init__(self, model: str, *, dtype: str = "float16", max_new_tokens: int = 512) -> None:
+    def __init__(
+        self,
+        model: str,
+        *,
+        dtype: str = "float16",
+        max_new_tokens: int = 512,
+        attn_implementation: str = "eager",
+    ) -> None:
         import torch  # noqa: PLC0415 - lazy: no GPU deps on a laptop
         from transformers import AutoModelForCausalLM, AutoTokenizer  # noqa: PLC0415
 
@@ -281,7 +298,11 @@ class HFBackend(Backend):
         # transformers renamed `torch_dtype` -> `dtype`. Kaggle and Colab do not run the same
         # version, and getting this wrong costs a full model download to find out, so accept
         # either rather than pinning an assumption about the environment.
-        kwargs = {"device_map": "auto", "trust_remote_code": True}
+        kwargs = {
+            "device_map": "auto",
+            "trust_remote_code": True,
+            "attn_implementation": attn_implementation,
+        }
         try:
             self._model = AutoModelForCausalLM.from_pretrained(
                 model, dtype=getattr(torch, dtype), **kwargs

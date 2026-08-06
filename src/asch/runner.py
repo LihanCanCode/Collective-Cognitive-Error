@@ -76,6 +76,7 @@ class TrialResult:
     transcript: list[dict]
     truncated: bool = False
     error: str | None = None
+    generation_mode: str = "sequential"
 
     def to_record(self) -> dict:
         record = self.spec.to_dict()
@@ -93,27 +94,52 @@ class TrialResult:
             transcript=self.transcript,
             truncated=self.truncated,
             error=self.error,
+            generation_mode=self.generation_mode,
         )
         return record
 
 
-def completed_trial_ids(results_path: Path) -> set[str]:
+def generation_mode_for(batch_size: int) -> str:
+    return "sequential" if batch_size <= 1 else "batched"
+
+
+def completed_trial_ids(results_path: Path, *, mode: str | None = None) -> set[str]:
     """Read back which trials are already done.
+
+    ``mode`` ("sequential"/"batched"), when given, only counts a trial as done if it was
+    generated in that mode. This is what makes resuming into a different generation mode safe:
+    without it, a directory containing a prior BATCHED run would silently satisfy a nominally
+    SEQUENTIAL confirmatory run -- resumability would report "already done" and skip every trial,
+    so the "safer, sequential-by-default" run would produce zero new generations while looking
+    identical to a real one. (This happened in practice -- see CLAUDE.md session 15.) Records
+    written before this field existed have no ``generation_mode`` at all, which correctly fails
+    to match either requested mode and forces regeneration, rather than being silently trusted.
 
     Tolerates a truncated final line, which is what a mid-write session kill leaves behind.
     """
     if not results_path.exists():
         return set()
     done: set[str] = set()
+    skipped_wrong_mode = 0
     with results_path.open(encoding="utf-8") as f:
         for line in f:
             line = line.strip()
             if not line:
                 continue
             try:
-                done.add(json.loads(line)["trial_id"])
+                rec = json.loads(line)
+                if mode is not None and rec.get("generation_mode") != mode:
+                    skipped_wrong_mode += 1
+                    continue
+                done.add(rec["trial_id"])
             except (json.JSONDecodeError, KeyError):
                 continue  # truncated tail from a killed session
+    if skipped_wrong_mode:
+        print(
+            f"[runner] {skipped_wrong_mode} trials in {results_path.name} were generated in a "
+            f"different mode than requested ({mode!r}) -- NOT counted as done, will regenerate",
+            file=sys.stderr,
+        )
     return done
 
 
@@ -178,6 +204,7 @@ def run_trial(spec: TrialSpec, item: Item, backend: Backend) -> TrialResult:
         raw_response=gen.text,
         transcript=transcript,
         truncated=looks_truncated(gen.text),
+        generation_mode="sequential",
     )
 
 
@@ -220,16 +247,26 @@ def run_grid(
     effect sizes this project measures, a few flipped trials can move a reported number. Use
     batch_size=1 for any run whose numbers will be reported; batch_size>1 for throughput on
     exploratory passes only.
+
+    ⚠️ Resume is generation-mode-aware for exactly this reason: without it, pointing a nominally
+    sequential run at a directory that already has batched results would report "already done"
+    and skip every trial, silently producing zero new (trustworthy) generations while looking
+    identical to a real confirmatory run. This happened in practice -- see CLAUDE.md session 15.
+    A run started with one batch_size and resumed with a different one regenerates the mismatched
+    trials rather than trusting them.
     """
     results_path.parent.mkdir(parents=True, exist_ok=True)
-    done = completed_trial_ids(results_path) if resume else set()
+    mode = generation_mode_for(batch_size)
+    done = completed_trial_ids(results_path, mode=mode) if resume else set()
 
     pending = [s for s in specs if s.trial_id not in done]
     if done:
-        print(f"[runner] resuming: {len(done)} done, {len(pending)} remaining", file=sys.stderr)
+        print(f"[runner] resuming ({mode}): {len(done)} done, {len(pending)} remaining",
+              file=sys.stderr)
 
     executed = 0
     started = time.time()
+    consecutive_errors = 0
     with results_path.open("a", encoding="utf-8") as f:
         for chunk in _chunks(pending, max(batch_size, 1)):
             if batch_size > 1:
@@ -239,6 +276,19 @@ def run_grid(
 
             for record in records:
                 f.write(json.dumps(record) + "\n")
+                if record.get("error"):
+                    consecutive_errors += 1
+                    # Surface failures immediately -- not after regenerating hundreds more error
+                    # records unnoticed. A model that fails on trial 1 fails on all of them, and
+                    # a multi-hour unattended run should not silently produce n=0 at the very end.
+                    print(f"[runner] ERROR on trial {record.get('trial_id')}: {record['error']}",
+                          file=sys.stderr)
+                    if consecutive_errors == 5:
+                        print("[runner] 5 consecutive errors -- this model/config is very "
+                              "likely broken for every remaining trial. Consider Ctrl-C and "
+                              "fixing the cause before burning more compute.", file=sys.stderr)
+                else:
+                    consecutive_errors = 0
             f.flush()  # a killed session must not lose completed work
             executed += len(records)
 
@@ -354,6 +404,7 @@ def _run_chunk(specs: list[TrialSpec], items: dict[str, Item], backend: Backend)
                 response_tokens=effort_proxy(text),
                 raw_response=text,
                 transcript=transcript,
+                generation_mode="batched",
             ).to_record()
         )
     return records

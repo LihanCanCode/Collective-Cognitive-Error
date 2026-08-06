@@ -730,12 +730,57 @@ only imprecise.** The direction (pressured > spontaneous) and rough magnitude (~
 the correction essentially unchanged. The fix mattered for *defensibility* (a reviewer would catch
 the duplicate-counting immediately), not for the qualitative finding.
 
+### 2026-08-07 — Session 15 (🚨 the "sequential" run was a no-op; two bugs, both fixed)
+
+**User ran what should have been the sequential confirmatory sweep. It silently did nothing.**
+Log showed `[runner] resuming: 400 done, 0 remaining` for every cell, on both Qwen and Mistral —
+identical numbers to the earlier batched run. Root cause: `completed_trial_ids` keyed only on
+`trial_id` (which encodes *what* to generate), never on *how* it was generated. The notebook's
+own recommended workflow — batched fast-look now, sequential confirmation later, same `OUT_DIR`
+both times — pointed the "safer, sequential-by-default" run at a directory the batched run had
+already filled. Resumability correctly-by-its-own-logic said "already done" and skipped
+everything. **The entire session-12 sequential-default fix was silently defeated by the exact
+directory-reuse pattern the notebook itself set up.** The Qwen/Mistral tables from that run are
+still just the batched numbers, not a confirmation of anything.
+
+**Fixed, properly (not a workaround):** every trial record now carries `generation_mode`
+(`"sequential"`/`"batched"`, derived from `batch_size` via `generation_mode_for()`).
+`completed_trial_ids(path, mode=...)` only counts a trial "done" if it was recorded in the
+*requested* mode; pre-fix records (no `generation_mode` field at all) correctly match neither and
+get regenerated. **Consequence: you can now safely re-run Cell 10 against the SAME `OUT_DIR`** —
+it will detect the existing records are `batched` and regenerate them `sequential`, no new
+directory needed. 4 new tests target this exactly (`test_resume_regenerates_when_generation_mode_differs`,
+`test_resume_within_the_same_mode_is_still_idempotent`, `test_records_are_stamped_...`,
+`test_completed_trial_ids_filters_by_mode`).
+
+**Second bug, same log: Phi-3.5-mini-instruct failed 100% of trials.** "trials/s" hit 300-450 —
+physically impossible for real 3.8B generation, meaning every call raised instantly and got
+written as an error record (the sequential path's `_run_one_safely` swallows exceptions per-trial
+by design, so this ran to completion "successfully" while doing nothing). The log itself named
+the likely cause: a flash-attention/sliding-window incompatibility warning specific to Phi-3.5.
+**Fixed:** `HFBackend` now defaults to `attn_implementation="eager"` — universally supported,
+consistent with this backend already trading throughput for reliability (session 2's own
+rationale for HFBackend existing at all). Exposed via `--attn-implementation` on `run_smoke.py`;
+`run_arms.py` inherits the new default automatically (positional call into `build_backend`).
+
+**Third, smaller fix: error visibility.** `_run_one_safely` failures used to be silent until the
+final summary — exactly how Phi-3.5's total failure went unnoticed for ~30 min of wall clock.
+`run_grid` now prints every error to stderr immediately, plus a loud warning after 5 consecutive
+failures suggesting Ctrl-C rather than burning hours regenerating the same error.
+
+⚠️ **Everything currently in `results/` locally (and `results_arms/` on Kaggle) is still the
+batched/provisional Qwen+Mistral data from session 13-14.** Real sequential numbers do not exist
+yet for any model. Study 2's mined fabrication numbers (session 14) were computed from this same
+provisional data and should be treated the same way — directionally trustworthy (large effects,
+Mistral comparison well-powered), not yet the final defensible figures.
+
 **Next up (in order):**
-0. ⬜ **Time-boxed sequential confirmation** — `run_arms.py --cells 0,3 --n-items 50` on Qwen
-   (cleanest baseline). ~45-70 min. Confirms the headline contrast is not a batching artefact.
-1. ⬜ **Full sequential confirmatory run** (all 5 cells, 200 items, `--batch-size 1` default) on
-   Qwen, Mistral, Phi-3.5 — the numbers that actually go in the paper. ~4-5h/model, resumable.
-   Will also fatten Qwen's spontaneous-error n enough to make its fabrication comparison usable.
+0. ⬜ **Re-run Cell 10** (same `OUT_DIR`, no changes needed) — now correctly regenerates
+   sequentially instead of silently resuming into batched data. ~4-5h × 3 models, resumable
+   *within* a mode. This is the run that actually produces reportable numbers.
+1. ⬜ Once real sequential data exists, re-run `mine_fabrication.py` against it — Qwen's
+   spontaneous-error n (currently 3, unusable) should grow with more genuine trials, possibly
+   making its fabrication comparison usable for the first time.
 1. ⬜ Calibrate a HARD tier (`--samples 10` for finer granularity) and re-run the arms on it — confirm `smallest` and `alphabetical` hit ≥95%
    baseline, and check whether they conform like `magnitude` or like `list_count`. This directly
    tests the enumeration hypothesis above.
