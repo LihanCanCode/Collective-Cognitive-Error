@@ -455,6 +455,33 @@ def test_batched_runner_resumes(tmp_path: Path):
     assert run_grid(specs, item_map, MockBackend(), out, progress_every=0, batch_size=8) == 0
 
 
+# --- gate verdict ---------------------------------------------------------------------
+
+
+def test_low_conformity_under_bare_is_a_result_not_a_failure():
+    """Guards the interpretation, not just the code.
+
+    Asch's confederates were bare and his humans still conformed at 32%. When a model does not,
+    that is evidence about models. Calling it a bank failure would push us to "fix" the item bank
+    until the effect reappeared -- manufacturing the very result we are trying to measure.
+    """
+    import sys
+    from pathlib import Path as _Path
+
+    sys.path.insert(0, str(_Path(__file__).resolve().parent.parent / "scripts"))
+    from run_smoke import verdict
+
+    bare = verdict(0.04, 0.02, ConfederateStyle.BARE)
+    assert bare.startswith("RESULT")
+    assert "not a failure" in bare
+
+    justified = verdict(0.04, 0.02, ConfederateStyle.JUSTIFIED)
+    assert justified.startswith("FAIL (floor)")
+
+    # A broken bank is still a broken bank, whatever the confederates say.
+    assert verdict(0.30, 0.02, ConfederateStyle.BARE).startswith("FAIL (bank)")
+
+
 # --- calibration ----------------------------------------------------------------------
 
 

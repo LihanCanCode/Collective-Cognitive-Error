@@ -320,6 +320,51 @@ to `--samples 10` when the **hard tier itself** is the object of study.
 stimulus** and must be committed or archived before submission — reviewers cannot reproduce the
 study without them.
 
+### 2026-08-06 — Session 5 (🚨 the BARE vs JUSTIFIED result — read this first)
+
+**Same model, same bank, same items. Only the confederates changed.**
+
+| Subtype | JUSTIFIED | BARE |
+|---|---|---|
+| **overall** | **16.0%** | **2.0%** |
+| magnitude | 35.3% | 5.9% |
+| arithmetic | 11.8% | 0.0% |
+| list_count | 0.0% | 0.0% |
+| independence ratio | 84% | **98%** |
+
+Baseline 4.0%, discard 0%, breaks 0% in both — the contrast is clean.
+
+**Interpretation, and it reframes the whole project:** Asch's confederates were *bare* — they
+stated a line and said nothing else — and his humans still conformed at **32%**. Qwen2.5-7B given
+exactly that conforms at **2%**. It is essentially immune to unanimous social pressure per se.
+
+It only "conforms" when confederates supply an **argument** — and those arguments are fabricated
+nonsense ("312 is larger than 787 because of the hundreds place").
+
+> **What the LLM-conformity literature measures may not be conformity. It is persuasion by
+> plausible-sounding reasoning.** The model is not moved by the fact that peers agree; it is moved
+> by the presence of a justification.
+
+This complicates Choi et al. (2025), Bellina et al. (2026) and Shehata & Li (2026) — all show peer
+*content* and read the result as human-like conformity. None of them run a bare-assertion control,
+so none can separate the two mechanisms. **This is now the paper's central contribution**, and it
+is stronger than the original framing.
+
+⚠️ **Caveats — do not overstate this yet:**
+- bare magnitude is **1/17**, CI [0.00, 0.10]. Direction is stark, precision is not there.
+- BARE transcripts render without a "said" line, so the majority signal is textually less
+  salient. Faithful to Asch, but an alternative explanation the full grid must rule out — a
+  "flat assertion + filler text of equal length" arm would settle it.
+- Single model. If Qwen-7B is unusually independent, the story changes.
+
+**Gate verdict logic updated:** a low conformity rate under BARE is now reported as
+`RESULT (not a failure)`, not `FAIL (floor)`. Treating it as a bank failure would push us to
+"fix" items until the effect reappeared — manufacturing the result we are trying to measure.
+`test_low_conformity_under_bare_is_a_result_not_a_failure` guards the interpretation.
+
+📌 **Also note:** response length went *up* under BARE (41.6 vs 37.9 tokens). Less argumentative
+pressure → more independent reasoning. Consistent with the enumeration hypothesis from session 3.
+
 **Next up (in order):**
 0. ⬜ Gate run 3 on the four-subtype bank — confirm `smallest` and `alphabetical` hit ≥95%
    baseline, and check whether they conform like `magnitude` or like `list_count`. This directly

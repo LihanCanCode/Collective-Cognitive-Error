@@ -8,6 +8,15 @@
 
 ---
 
+> **⚠️ Reframing, 2026-08-06 (pilot data).** A bare-assertion control changed the headline claim.
+> On an identical bank, Qwen2.5-7B conformed at **16%** when confederates supplied arguments and
+> **2%** when they stated only an answer — which is what Asch's confederates did, and his humans
+> still conformed at 32%. So the effect the LLM-conformity literature reports may be **persuasion
+> by plausible-sounding reasoning, not social conformity**. No prior paper (Choi et al. 2025;
+> Bellina et al. 2026; Shehata & Li 2026) runs a bare control, so none can separate the two.
+> Study 1 below now leads with the BARE × JUSTIFIED contrast. See CLAUDE.md for the data and
+> caveats.
+
 ## 0. The claim we are making
 
 Three nested questions, one shared experimental harness:
