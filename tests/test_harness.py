@@ -88,12 +88,24 @@ def test_smallest_items_have_the_right_correct_answer():
             assert min(values, key=values.get) == it.correct
 
 
-def test_alphabetical_items_have_the_right_correct_answer():
+def test_closest_items_have_the_right_correct_answer():
     for it in generate_perceptual_bank(40):
-        if it.subtype == "alphabetical":
-            assert min(it.options.values()) == it.options[it.correct]
-            first_letters = {v[0] for v in it.options.values()}
-            assert len(first_letters) == 3, "distinct first letters keep the ordering obvious"
+        if it.subtype == "closest":
+            target = int(it.question.split("closest to ")[1].rstrip("?"))
+            dists = {k: abs(int(v) - target) for k, v in it.options.items()}
+            assert min(dists, key=dists.get) == it.correct
+            ordered = sorted(dists.values())
+            assert ordered[1] - ordered[0] >= 100, "the winner must be unambiguous"
+
+
+def test_bank_has_no_alphabetical_items():
+    """Regression guard for the gate run 3 failure.
+
+    `alphabetical` scored 33% alone on Qwen2.5-7B -- genuine alphabet errors ("'k' is before 'n'
+    and 'f'") -- and then reported 91.7% "conformity" that was really ignorance. Alphabetical
+    ordering is a memorised sequence lookup, not a perceptual comparison.
+    """
+    assert "alphabetical" not in {it.subtype for it in generate_perceptual_bank(60)}
 
 
 def test_bank_has_no_items_requiring_computation():
@@ -534,6 +546,53 @@ def test_batched_runner_resumes(tmp_path: Path):
 
     assert run_grid(specs, item_map, MockBackend(), out, progress_every=0, batch_size=8) == len(specs)
     assert run_grid(specs, item_map, MockBackend(), out, progress_every=0, batch_size=8) == 0
+
+
+# --- response format ------------------------------------------------------------------
+
+
+def test_reasoning_first_puts_the_answer_after_the_reasoning(item: Item):
+    """The ordering is an experimental variable, not cosmetics.
+
+    ANSWER_FIRST forces the model to commit before it may reason, making the answer a snap
+    judgement and the "reasoning" post-hoc rationalisation. That produced 18% baseline error on a
+    7B and transcripts whose reasoning contradicted the stated answer.
+    """
+    from src.asch.config import ResponseFormat
+
+    rf = naive_messages(item, [], Privacy.PUBLIC, ResponseFormat.REASONING_FIRST)[0]["content"]
+    af = naive_messages(item, [], Privacy.PUBLIC, ResponseFormat.ANSWER_FIRST)[0]["content"]
+
+    assert rf.index("Reasoning:") < rf.index("Answer:")
+    assert af.index("Answer:") < af.index("Reasoning:")
+
+
+def test_response_format_defaults_to_reasoning_first():
+    from src.asch.config import ResponseFormat
+
+    assert TrialSpec(
+        item_id="i", model="m", n_confederates=0, unanimity=Unanimity.UNANIMOUS,
+        privacy=Privacy.PUBLIC, difficulty=Difficulty.EASY, kinship=Kinship.SAME_FAMILY,
+        confederate_model="m", temperature=0.0, sample_idx=0,
+    ).response_format is ResponseFormat.REASONING_FIRST
+
+
+def test_parser_takes_the_final_answer_not_an_intermediate_thought():
+    """Under REASONING_FIRST the reasoning may float other options before committing."""
+    text = (
+        "Reasoning: At first glance the answer looks like A, and one might say Answer: A.\n"
+        "But on checking the values, C is larger.\n"
+        "Answer: C\nConfidence: 90"
+    )
+    assert parse_answer(text).answer == "C"
+
+
+def test_response_format_changes_trial_identity(spec: TrialSpec):
+    from dataclasses import replace
+
+    from src.asch.config import ResponseFormat
+
+    assert replace(spec, response_format=ResponseFormat.ANSWER_FIRST).trial_id != spec.trial_id
 
 
 # --- gate verdict ---------------------------------------------------------------------

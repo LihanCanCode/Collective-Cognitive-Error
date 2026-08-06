@@ -44,7 +44,14 @@ if str(_REPO_ROOT) not in sys.path:
 
 from src.asch.analyze import baseline_error_rate, format_table, independence_ratios, tabulate  # noqa: E402
 from src.asch.backends import APIBackend, HFBackend, MockBackend, VLLMBackend  # noqa: E402
-from src.asch.config import ConfederateStyle, GridConfig, Kinship, Privacy, Unanimity  # noqa: E402
+from src.asch.config import (  # noqa: E402
+    ConfederateStyle,
+    GridConfig,
+    Kinship,
+    Privacy,
+    ResponseFormat,
+    Unanimity,
+)
 from src.asch.items import generate_perceptual_bank, load_bank  # noqa: E402
 from src.asch.runner import load_results, run_grid  # noqa: E402
 
@@ -81,6 +88,10 @@ def main() -> None:
                     default=ConfederateStyle.JUSTIFIED.value,
                     help="bare = answer only (faithful Asch, no model call); "
                          "justified = confederates write their own supporting argument")
+    ap.add_argument("--response-format", choices=[f.value for f in ResponseFormat],
+                    default=ResponseFormat.REASONING_FIRST.value,
+                    help="reasoning_first = deliberate then commit (default). answer_first = "
+                         "commit before reasoning, making the rationale post-hoc.")
     ap.add_argument("--batch-size", type=int, default=1,
                     help="1 = sequential. >1 uses the two-phase batched path; results are "
                          "identical, only throughput changes. Try 16-32 on a T4.")
@@ -99,6 +110,7 @@ def main() -> None:
         privacy=[Privacy.PUBLIC],
         kinship=[Kinship.SAME_FAMILY],
         confederate_style=[ConfederateStyle(args.confederate_style)],
+        response_format=[ResponseFormat(args.response_format)],
         temperature=0.0,
         study="smoke",
     )

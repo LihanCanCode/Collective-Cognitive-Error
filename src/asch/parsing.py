@@ -44,14 +44,18 @@ class ParsedAnswer:
 def parse_answer(text: str) -> ParsedAnswer:
     """Extract the answer letter and self-reported confidence.
 
-    Tries the instructed ``Answer: X`` format first, then falls back to a bare leading letter,
-    which covers models that drop the label but still answer cleanly. Anything else is a
-    genuine parse failure and is left as None.
-    """
-    match = ANSWER_RE.search(text) or FALLBACK_RE.search(text)
-    answer = match.group(1).upper() if match else None
+    Takes the **last** ``Answer: X`` match, not the first. Under REASONING_FIRST the committed
+    answer is the final line, and the reasoning above it may well mention other options ("at
+    first I thought the answer was A..."). Taking the last match reads the model's conclusion
+    rather than an intermediate thought.
 
-    conf_match = CONFIDENCE_RE.search(text)
+    Falls back to a bare leading letter for models that drop the label but still answer cleanly.
+    Anything else is a genuine parse failure and is left as None -- never guessed.
+    """
+    matches = ANSWER_RE.findall(text) or FALLBACK_RE.findall(text)
+    answer = matches[-1].upper() if matches else None
+
+    conf_match = CONFIDENCE_RE.search(text)  # confidence appears once, position-independent
     confidence = None
     if conf_match:
         value = int(conf_match.group(1))

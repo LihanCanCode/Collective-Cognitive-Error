@@ -133,7 +133,7 @@ def run_trial(spec: TrialSpec, item: Item, backend: Backend) -> TrialResult:
         )
 
     gen = backend.generate(
-        naive_messages(item, turns, spec.privacy),
+        naive_messages(item, turns, spec.privacy, spec.response_format),
         model=spec.model,
         temperature=spec.temperature,
         max_tokens=512,
@@ -298,7 +298,7 @@ def _run_chunk(specs: list[TrialSpec], items: dict[str, Item], backend: Backend)
             )
         transcripts[spec.trial_id] = (transcript, turns, all_complied)
         nkey = (spec.model, spec.temperature, spec.trial_id)
-        naive_prompts[nkey] = naive_messages(item, turns, spec.privacy)
+        naive_prompts[nkey] = naive_messages(item, turns, spec.privacy, spec.response_format)
         naive_oracles[nkey] = item.correct
 
     naive_text = _generate_grouped(backend, naive_prompts, max_tokens=512, oracles=naive_oracles)

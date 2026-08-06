@@ -393,8 +393,55 @@ rather than argumentation. FILLER = answer + a content-free sentence of comparab
 BARE and FILLER are both deterministic (`scripted_confederate_text`), so neither needs a
 confederate model call: both arms are nearly free, and compliance holds by construction.
 
+### 2026-08-06 — Session 7 (gate run 3: FILLER confirms, and a design bug)
+
+**✅ THE FILLER CONTROL PASSED — the headline claim survives.** Qwen2.5-7B, identical bank:
+
+| arm | conformity |
+|---|---|
+| BARE | **18.0%** |
+| FILLER | **18.0%** |
+| JUSTIFIED | **36.0%** |
+
+FILLER tracks BARE *exactly* and JUSTIFIED is double. The textual-salience confound is dead:
+**argumentation drives the effect, not the presence of text.** All three arms share the same
+items and the same (contaminated) baseline, so the contrast is valid even on a dirty bank.
+
+**🐛 Design bug found in my own prompt: answer-before-reasoning.** The output format was
+`Answer / Confidence / Reasoning`, so the model had to emit its answer token *before* it could
+reason. Every rationale was post-hoc. Caught by a control transcript where the reasoning
+contradicts the answer:
+
+> *"199 is smaller than both 924 and 921 ... **the correct answer must be A**."* → `Answer: B`
+
+That is why baseline error was 18% on a 7B for tasks it does trivially, and it probably inflated
+conformity too — a snap judgement is exactly what a visible majority captures.
+
+**Fix turns the bug into the experiment.** New `ResponseFormat` factor:
+- `REASONING_FIRST` (default) — deliberate, then commit. Required for a clean calibration baseline.
+- `ANSWER_FIRST` — commit, then rationalise.
+
+This *is* the chain-of-thought-as-conformity-defence manipulation predicted in session 3 from the
+list_count-vs-magnitude gap. If ANSWER_FIRST is both less accurate and more conformist,
+deliberation is a deployable defence.
+
+⚠️ Calibration now takes `response_format` too — calibrating under REASONING_FIRST and running
+the grid under ANSWER_FIRST would certify items the model only gets right *when allowed to
+think*, and the "conformity" would partly be the format change.
+
+**Parser now takes the LAST `Answer:` match**, not the first: under REASONING_FIRST the committed
+answer is the final line and the reasoning above may float other options.
+
+**Bank change: `alphabetical` removed** — 33.3% baseline, and it then reported 91.7% "conformity"
+that was pure ignorance. The failures were genuine alphabet errors ("'k' is before 'n' and 'f'").
+Alphabetical ordering is a memorised sequence lookup, not a perceptual comparison. Replaced with
+`closest` ("which number is closest to X?", runner-up ≥100 away). Regression test guards it.
+
+⚠️ **All trial IDs changed again** (`response_format` is part of `TrialSpec`). Gate run 3 results
+are superseded.
+
 **Next up (in order):**
-0. ⬜ Gate run 3 on the four-subtype bank — confirm `smallest` and `alphabetical` hit ≥95%
+0. ⬜ Gate run 4 on the four-subtype bank — confirm `smallest` and `alphabetical` hit ≥95%
    baseline, and check whether they conform like `magnitude` or like `list_count`. This directly
    tests the enumeration hypothesis above.
 0b. ⬜ **Notebook Cell 8: verify batching on real hardware** before trusting it for the grid. The

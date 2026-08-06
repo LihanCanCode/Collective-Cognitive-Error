@@ -55,6 +55,26 @@ class ConfederateStyle(str, Enum):
     JUSTIFIED = "justified"
 
 
+class ResponseFormat(str, Enum):
+    """Whether the naive agent answers before or after reasoning.
+
+    ANSWER_FIRST: "Answer / Confidence / Reasoning". The model must emit the answer token before
+        any reasoning, so the answer is a snap judgement and everything after it is post-hoc
+        rationalisation. This was the original (accidental) format, and it produced 18% baseline
+        error on a 7B for tasks it does trivially -- plus transcripts where the reasoning
+        contradicts the stated answer ("...the correct answer must be A." / "Answer: B").
+    REASONING_FIRST: "Reasoning / Answer / Confidence". The model deliberates, then commits.
+
+    Keeping both makes this the **chain-of-thought-as-conformity-defence** manipulation predicted
+    in session 3 by the list_count vs magnitude gap: if forcing explicit reasoning before
+    committing reduces conformity, CoT is a deployable defence and not merely an accuracy trick.
+    REASONING_FIRST is the default because calibration requires a clean baseline.
+    """
+
+    ANSWER_FIRST = "answer_first"
+    REASONING_FIRST = "reasoning_first"
+
+
 class Privacy(str, Enum):
     """Whether the naive agent's answer is visible to the group.
 
@@ -99,6 +119,7 @@ class TrialSpec:
     temperature: float
     sample_idx: int
     confederate_style: ConfederateStyle = ConfederateStyle.JUSTIFIED
+    response_format: ResponseFormat = ResponseFormat.REASONING_FIRST
     study: str = "study1"
 
     @property
@@ -137,6 +158,9 @@ class GridConfig:
     confederate_style: list[ConfederateStyle] = field(
         default_factory=lambda: [ConfederateStyle.JUSTIFIED]
     )
+    response_format: list[ResponseFormat] = field(
+        default_factory=lambda: [ResponseFormat.REASONING_FIRST]
+    )
     temperature: float = 0.0
     samples_per_cell: int = 1
     study: str = "study1"
@@ -144,7 +168,7 @@ class GridConfig:
     def expand(self, items: list) -> list[TrialSpec]:
         """Cartesian product of conditions x items, with degenerate cells pruned."""
         trials: list[TrialSpec] = []
-        for item, model, n, unan, priv, kin, style, s in itertools.product(
+        for item, model, n, unan, priv, kin, style, fmt, s in itertools.product(
             items,
             self.models,
             self.n_confederates,
@@ -152,6 +176,7 @@ class GridConfig:
             self.privacy,
             self.kinship,
             self.confederate_style,
+            self.response_format,
             range(self.samples_per_cell),
         ):
             if not _cell_is_meaningful(n, unan):
@@ -169,6 +194,7 @@ class GridConfig:
                     temperature=self.temperature,
                     sample_idx=s,
                     confederate_style=style,
+                    response_format=fmt,
                     study=self.study,
                 )
             )

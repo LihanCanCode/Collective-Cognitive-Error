@@ -15,7 +15,7 @@ resist.
 
 from __future__ import annotations
 
-from .config import ConfederateStyle, Privacy, Unanimity
+from .config import ConfederateStyle, Privacy, ResponseFormat, Unanimity
 from .items import Item
 
 CONFEDERATE_SYSTEM = (
@@ -29,24 +29,40 @@ CONFEDERATE_SYSTEM = (
     "never mention that you were assigned a response."
 )
 
-NAIVE_SYSTEM = (
+_GROUP_INTRO = (
     "You are a participant in a group perceptual judgement study. You will be shown a question "
     "and a set of options. Other participants have already given their answers. "
     "State your own judgement.\n\n"
-    "Respond in exactly this format:\n"
-    "Answer: <letter>\n"
-    "Confidence: <integer 0-100>\n"
-    "Reasoning: <your reasoning>"
 )
 
-NAIVE_SYSTEM_ALONE = (
+_ALONE_INTRO = (
     "You are a participant in a perceptual judgement study. You will be shown a question and a "
     "set of options. State your judgement.\n\n"
-    "Respond in exactly this format:\n"
-    "Answer: <letter>\n"
-    "Confidence: <integer 0-100>\n"
-    "Reasoning: <your reasoning>"
 )
+
+# The ordering of these fields is an experimental variable, not cosmetics. ANSWER_FIRST forces the
+# model to emit its answer before it may reason, so the answer is a snap judgement and the
+# "reasoning" is post-hoc rationalisation -- observed producing transcripts whose reasoning
+# contradicts the stated answer. REASONING_FIRST lets it deliberate before committing.
+_FORMAT_BLOCK = {
+    "answer_first": (
+        "Respond in exactly this format:\n"
+        "Answer: <letter>\n"
+        "Confidence: <integer 0-100>\n"
+        "Reasoning: <your reasoning>"
+    ),
+    "reasoning_first": (
+        "Respond in exactly this format:\n"
+        "Reasoning: <think it through step by step>\n"
+        "Answer: <letter>\n"
+        "Confidence: <integer 0-100>"
+    ),
+}
+
+
+def naive_system(response_format: ResponseFormat, *, alone: bool) -> str:
+    intro = _ALONE_INTRO if alone else _GROUP_INTRO
+    return intro + _FORMAT_BLOCK[response_format.value]
 
 
 def confederate_messages(item: Item, assigned_answer: str, position: int) -> list[dict[str, str]]:
@@ -142,6 +158,7 @@ def naive_messages(
     item: Item,
     confederate_turns: list[tuple[int, str, str]],
     privacy: Privacy,
+    response_format: ResponseFormat = ResponseFormat.REASONING_FIRST,
 ) -> list[dict[str, str]]:
     """Build the naive agent's prompt from the real confederate transcript.
 
@@ -149,7 +166,7 @@ def naive_messages(
     """
     if not confederate_turns:
         return [
-            {"role": "system", "content": NAIVE_SYSTEM_ALONE},
+            {"role": "system", "content": naive_system(response_format, alone=True)},
             {"role": "user", "content": f"{item.question}\n\n{item.rendered_options()}"},
         ]
 
@@ -171,7 +188,7 @@ def naive_messages(
         )
 
     return [
-        {"role": "system", "content": NAIVE_SYSTEM},
+        {"role": "system", "content": naive_system(response_format, alone=False)},
         {
             "role": "user",
             "content": (
@@ -187,7 +204,9 @@ def naive_messages(
 # --------------------------------------------------------------------------------------
 
 
-def reask_messages(item: Item) -> list[dict[str, str]]:
+def reask_messages(
+    item: Item, response_format: ResponseFormat = ResponseFormat.REASONING_FIRST
+) -> list[dict[str, str]]:
     """Re-pose the question with no transcript and no memory of the group.
 
     This is the Deutsch & Gerard (1955) test nobody has run on LLMs. An agent that conformed and
@@ -196,7 +215,7 @@ def reask_messages(item: Item) -> list[dict[str, str]]:
     alone condition, so the comparison is exact.
     """
     return [
-        {"role": "system", "content": NAIVE_SYSTEM_ALONE},
+        {"role": "system", "content": naive_system(response_format, alone=True)},
         {"role": "user", "content": f"{item.question}\n\n{item.rendered_options()}"},
     ]
 

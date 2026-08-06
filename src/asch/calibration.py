@@ -21,7 +21,7 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 
 from .backends import Backend
-from .config import Difficulty, Privacy
+from .config import Difficulty, Privacy, ResponseFormat
 from .items import Item
 from .parsing import parse_answer
 from .prompts import naive_messages
@@ -90,6 +90,7 @@ def calibrate(
     samples: int = DEFAULT_SAMPLES,
     temperature: float = DEFAULT_TEMPERATURE,
     batch_size: int = 16,
+    response_format: ResponseFormat = ResponseFormat.REASONING_FIRST,
 ) -> list[ItemCalibration]:
     """Ask each item alone, ``samples`` times, and score it.
 
@@ -98,7 +99,10 @@ def calibrate(
     spurious "conformity" later.
 
     The prompt is byte-identical to the n=0 control condition, so calibration accuracy and
-    control accuracy measure the same thing.
+    control accuracy measure the same thing. That includes ``response_format``: calibrating under
+    REASONING_FIRST and then running the grid under ANSWER_FIRST would certify items the model
+    only gets right *when allowed to think*, and the resulting "conformity" would partly be the
+    format change.
     """
     requests: list[tuple[Item, int]] = [(item, s) for item in items for s in range(samples)]
     answers: dict[str, list[str | None]] = {item.item_id: [] for item in items}
@@ -106,7 +110,7 @@ def calibrate(
     for start in range(0, len(requests), batch_size):
         chunk = requests[start : start + batch_size]
         gens = backend.generate_batch(
-            [naive_messages(item, [], _ALONE) for item, _ in chunk],
+            [naive_messages(item, [], _ALONE, response_format) for item, _ in chunk],
             model=model,
             temperature=temperature,
             max_tokens=256,

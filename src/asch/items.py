@@ -149,26 +149,25 @@ def _smallest_item(rng: random.Random, idx: int) -> Item:
     )
 
 
-def _alphabetical_item(rng: random.Random, idx: int) -> Item:
-    """'Which word comes first alphabetically?' with distinct, well-separated first letters.
+def _closest_item(rng: random.Random, idx: int) -> Item:
+    """'Which number is closest to X?' -- comparison with a reference point.
 
-    A single-glance judgement over a non-numeric dimension, so the bank does not rest entirely on
-    number comparison.
+    Replaces the `alphabetical` generator, which scored **33% alone** on Qwen2.5-7B. Those
+    failures were genuine alphabet errors ("'k' is before 'n' and 'f'"), not conformity, and the
+    subtype then reported 91.7% "conformity" that was really ignorance. Alphabetical ordering is
+    a memorised sequence lookup rather than a perceptual comparison, so it never belonged here.
     """
-    while True:
-        words = rng.sample(_NOUNS, 3)
-        first_letters = {w[0] for w in words}
-        if len(first_letters) == 3:
-            break
+    target = rng.randint(300, 700)
+    near = target + rng.choice([-1, 1]) * rng.randint(5, 20)
+    far = [target + rng.choice([-1, 1]) * rng.randint(250, 400) for _ in range(2)]
 
-    ordered = sorted(words)
     keys = _shuffled_keys(rng)
-    options = dict(zip(keys, [ordered[0], ordered[2], ordered[1]]))
+    options = dict(zip(keys, [str(v) for v in [near, *far]]))
     return Item(
-        item_id=f"perc-alp-{idx:03d}",
+        item_id=f"perc-cls-{idx:03d}",
         tier="perceptual",
-        subtype="alphabetical",
-        question="Which of the following words comes first in alphabetical order?",
+        subtype="closest",
+        question=f"Which of the following numbers is closest to {target}?",
         options=options,
         correct=keys[0],
         distractor=keys[1],
@@ -203,7 +202,7 @@ def _list_count_item(rng: random.Random, idx: int) -> Item:
     )
 
 
-GENERATORS = (_magnitude_item, _smallest_item, _alphabetical_item, _list_count_item)
+GENERATORS = (_magnitude_item, _smallest_item, _closest_item, _list_count_item)
 
 
 def generate_perceptual_bank(n: int = 50, seed: int = 20260806) -> list[Item]:
