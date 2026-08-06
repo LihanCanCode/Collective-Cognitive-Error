@@ -67,6 +67,7 @@ class TrialResult:
     confidence: int | None
     stance: str
     correct_answer: str
+    distractor_answer: str
     majority_answer: str | None
     confederates_complied: bool
     valid: bool
@@ -83,6 +84,7 @@ class TrialResult:
             confidence=self.confidence,
             stance=self.stance,
             correct_answer=self.correct_answer,
+            distractor_answer=self.distractor_answer,
             majority_answer=self.majority_answer,
             confederates_complied=self.confederates_complied,
             valid=self.valid,
@@ -168,6 +170,7 @@ def run_trial(spec: TrialSpec, item: Item, backend: Backend) -> TrialResult:
         confidence=parsed.confidence,
         stance=stance.value,
         correct_answer=item.correct,
+        distractor_answer=item.distractor,
         majority_answer=majority,
         confederates_complied=all_complied,
         valid=all_complied and parsed.parsed,
@@ -336,6 +339,7 @@ def _run_chunk(specs: list[TrialSpec], items: dict[str, Item], backend: Backend)
                 confidence=parsed.confidence,
                 stance=classify_stance(parsed.answer, item.correct, majority).value,
                 correct_answer=item.correct,
+                distractor_answer=item.distractor,
                 majority_answer=majority,
                 confederates_complied=all_complied,
                 valid=all_complied and parsed.parsed,

@@ -23,6 +23,7 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
+from src.asch.analyze import excess_conformity  # noqa: E402
 from src.asch.items import load_bank  # noqa: E402
 
 
@@ -38,6 +39,7 @@ def main() -> None:
 
     _baseline_by_subtype(records, subtype)
     _conformity_by_subtype(records, subtype)
+    _excess_by_subtype(records, subtype)
     _discard_breakdown(records)
     _show_baseline_failures(records, subtype, args.show)
     _show_confederate_breaks(records, args.show)
@@ -75,6 +77,34 @@ def _conformity_by_subtype(records: list[dict], subtype: dict[str, str]) -> None
     for st in sorted(stats):
         hits = stats[st]
         print(f"  {st:<14} {sum(hits) / len(hits):6.1%}  ({sum(hits)}/{len(hits)})")
+
+
+def _excess_by_subtype(records: list[dict], subtype: dict[str, str]) -> None:
+    """Conformity net of the same items' unaided pull toward that distractor.
+
+    Once the bank is clean these two columns coincide. They diverge on the HARD tier, which is
+    where the signal should live -- Asch found conformity rises with difficulty.
+    """
+    tagged = [{**r, "subtype": subtype.get(r["item_id"], "?")} for r in records]
+    stats = excess_conformity(tagged, by=("subtype",))
+    if not stats:
+        return
+
+    print("\n" + "=" * 78)
+    print("EXCESS CONFORMITY  (pressured - alone, on the same items)")
+    print("=" * 78)
+    print(f"  {'subtype':<14} {'alone':>8} {'pressured':>11} {'excess':>9}")
+    for (st,), s in sorted(stats.items(), key=lambda kv: str(kv[0])):
+        base, under, exc = (
+            s["baseline_distractor_rate"], s["pressured_distractor_rate"], s["excess"]
+        )
+        print(
+            f"  {st:<14} {_pct(base):>8} {_pct(under):>11} {_pct(exc):>9}"
+        )
+
+
+def _pct(value: float | None) -> str:
+    return "-" if value is None else f"{value:.1%}"
 
 
 def _discard_breakdown(records: list[dict]) -> None:

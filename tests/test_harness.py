@@ -635,9 +635,12 @@ def test_low_conformity_under_bare_is_a_result_not_a_failure():
     sys.path.insert(0, str(_Path(__file__).resolve().parent.parent / "scripts"))
     from run_smoke import verdict
 
-    bare = verdict(0.04, 0.02, ConfederateStyle.BARE)
-    assert bare.startswith("RESULT")
-    assert "not a failure" in bare
+    # BARE and FILLER are both no-argument arms -- neither should be reported as a bank failure.
+    for style in (ConfederateStyle.BARE, ConfederateStyle.FILLER):
+        message = verdict(0.04, 0.02, style)
+        assert message.startswith("RESULT"), f"{style.value} misreported as a failure"
+        assert "not a failure" in message
+        assert style.value.upper() in message, "must name the arm actually run"
 
     justified = verdict(0.04, 0.02, ConfederateStyle.JUSTIFIED)
     assert justified.startswith("FAIL (floor)")
@@ -722,6 +725,47 @@ def test_analysis_recovers_the_known_mock_conformity_rate(tmp_path: Path):
     cells = tabulate((json.loads(line) for line in out.open()), by=("model",))
     cr = next(iter(cells.values())).conformity_rate
     assert 0.3 < cr < 0.7, f"expected ~0.5, recovered {cr}"
+
+
+def test_excess_conformity_subtracts_baseline_distractor_attraction():
+    """The metric that keeps the HARD tier usable.
+
+    On a hard item the model may pick the distractor 40% of the time unaided. Raw CR would call
+    that conformity; excess conformity credits only the shift caused by social pressure.
+    """
+    from src.asch.analyze import excess_conformity
+
+    records = (
+        # Alone: picks the distractor 2/5 of the time -- a genuinely hard item.
+        [{"valid": True, "n_confederates": 0, "answer": "B", "distractor_answer": "B"}] * 2
+        + [{"valid": True, "n_confederates": 0, "answer": "A", "distractor_answer": "B"}] * 3
+        # Under pressure: 7/10.
+        + [{"valid": True, "n_confederates": 3, "answer": "B", "distractor_answer": "B"}] * 7
+        + [{"valid": True, "n_confederates": 3, "answer": "A", "distractor_answer": "B"}] * 3
+    )
+    stats = excess_conformity(records)[()]
+    assert stats["baseline_distractor_rate"] == pytest.approx(0.4)
+    assert stats["pressured_distractor_rate"] == pytest.approx(0.7)
+    assert stats["excess"] == pytest.approx(0.3), "only the pressure-induced shift counts"
+
+
+def test_excess_conformity_equals_raw_rate_when_baseline_is_clean():
+    from src.asch.analyze import excess_conformity
+
+    records = (
+        [{"valid": True, "n_confederates": 0, "answer": "A", "distractor_answer": "B"}] * 5
+        + [{"valid": True, "n_confederates": 3, "answer": "B", "distractor_answer": "B"}] * 1
+        + [{"valid": True, "n_confederates": 3, "answer": "A", "distractor_answer": "B"}] * 9
+    )
+    stats = excess_conformity(records)[()]
+    assert stats["baseline_distractor_rate"] == pytest.approx(0.0)
+    assert stats["excess"] == pytest.approx(0.1)
+
+
+def test_excess_conformity_tolerates_older_records_without_the_field():
+    from src.asch.analyze import excess_conformity
+
+    assert excess_conformity([{"valid": True, "n_confederates": 0, "answer": "A"}]) == {}
 
 
 def test_baseline_error_rate_uses_only_control_trials():

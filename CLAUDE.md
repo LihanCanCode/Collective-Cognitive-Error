@@ -498,8 +498,46 @@ build an analysis on it.
 
 Each of those is separately demonstrated and each is a measurement artefact, not conformity.
 
+### 2026-08-06 — Session 9 (clean-bank arm contrast; the floor problem)
+
+**Qwen2.5-7B, clean bank (100% baseline), REASONING_FIRST:**
+
+| arm | baseline err | conformity |
+|---|---|---|
+| BARE | 0.0% | **0.0%** |
+| FILLER | 0.0% | **0.0%** |
+| JUSTIFIED | 0.0% | **6.0%** |
+
+BARE and FILLER are *identical at exactly zero*, on a perfect baseline. The salience confound is
+now dead beyond argument, and uncontaminated this time. **Only argumentation produces conformity.**
+
+**🐛 Verdict bug fixed:** FILLER was reported as `FAIL (floor) ... under JUSTIFIED confederates`.
+Only BARE was special-cased. BARE and FILLER are both no-argument arms — low conformity in either
+is the measurement, not a broken bank. The message now names the arm actually run.
+
+**🚨 The floor problem.** On a clean bank the effect is 0–6%. There is no room left to detect
+moderators (group size, ally, privacy) — and the tempting fix, harder items, reintroduces exactly
+the baseline contamination the calibration pre-pass exists to prevent. That trap already produced
+one fake result this project (alphabetical: 91.7% "conformity" at 33% baseline).
+
+**Solution: excess conformity** (`analyze.excess_conformity`) —
+
+> `P(picks distractor | pressured) − P(picks distractor | alone)`, on the **same items**.
+
+Subtracting the same items' unaided pull toward that specific distractor measures only the shift
+caused by social pressure, so it is valid **at any baseline**. That makes the **HARD tier usable**
+— and Asch found conformity rises with difficulty, so that is where the signal should be. Raw CR
+is its special case when baseline distractor attraction is zero, so report both.
+
+Records now carry `distractor_answer` (needed to compute it), and `diagnose.py` prints the
+alone/pressured/excess columns per subtype.
+
+**Revised plan for the grid:** run the moderator conditions on the **HARD tier** with excess
+conformity as the primary DV, and keep the EASY tier for the arm contrasts (BARE/FILLER/JUSTIFIED,
+REASONING/ANSWER_FIRST) where the effects are large and a clean baseline matters most.
+
 **Next up (in order):**
-0. ⬜ Optional A four-arm run on the clean bank — confirm `smallest` and `alphabetical` hit ≥95%
+0. ⬜ Calibrate a HARD tier (`--samples 10` for finer granularity) and re-run the arms on it — confirm `smallest` and `alphabetical` hit ≥95%
    baseline, and check whether they conform like `magnitude` or like `list_count`. This directly
    tests the enumeration hypothesis above.
 0b. ⬜ **Notebook Cell 8: verify batching on real hardware** before trusting it for the grid. The
