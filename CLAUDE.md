@@ -536,8 +536,40 @@ alone/pressured/excess columns per subtype.
 conformity as the primary DV, and keep the EASY tier for the arm contrasts (BARE/FILLER/JUSTIFIED,
 REASONING/ANSWER_FIRST) where the effects are large and a clean baseline matters most.
 
+### 2026-08-06 — Session 10 (the paper reframed; core-results sweep built)
+
+**The paper is a measurement critique, not a conformity study.** Assembled from runs already done:
+
+| condition | conformity | corresponds to |
+|---|---|---|
+| justified + answer_first | **36%** | ≈ how prior work measures it |
+| justified + reasoning_first | 6% | allow deliberation |
+| filler + reasoning_first | 0% | remove the argument, keep the text |
+| bare + reasoning_first | 0% | Asch's actual paradigm |
+
+Plus contamination as a third artefact source (`alphabetical`: 91.7% "conformity" at 33% baseline).
+
+> 🔑 **STRATEGIC POINT — do not lose the 36% cell.** A null result alone gets rejected as "you
+> failed to find the effect". What makes this publishable is **reproducing the literature's
+> magnitude first, then dissolving it**. The `justified × answer_first` cell is the load-bearing
+> one. `run_arms.py` prints a WARNING if it comes back below 15%.
+
+**`scripts/run_arms.py` built** — one command per model produces the whole table (5 cells, both
+raw CR and excess conformity). `bare`/`filler` need no confederate generation, so the sweep costs
+barely more than two arms.
+
+**⚠️ Biggest risk to the paper: single model family.** Everything rests on Qwen2.5-7B. Run the
+sweep on ≥3 families (Mistral-7B-v0.3, gemma-2-9b-it are ungated).
+
+**⚠️ Study 2 is undercut by our own result.** If conformity is ~0 under deliberation, there is
+little conformity left to correlate with hallucination. The fabrication finding lives specifically
+in **ANSWER_FIRST** ("312 is larger than 787 because of the hundreds place"). Reframe Study 2 as:
+*snap-judgement formats induce both conformity and fabricated justification* — still a real,
+mechanistically interesting result, but no longer the headline.
+
 **Next up (in order):**
-0. ⬜ Calibrate a HARD tier (`--samples 10` for finer granularity) and re-run the arms on it — confirm `smallest` and `alphabetical` hit ≥95%
+0. ⬜ `run_arms.py` on 3 model families — the core table. **Highest value run in the project.**
+1. ⬜ Calibrate a HARD tier (`--samples 10` for finer granularity) and re-run the arms on it — confirm `smallest` and `alphabetical` hit ≥95%
    baseline, and check whether they conform like `magnitude` or like `list_count`. This directly
    tests the enumeration hypothesis above.
 0b. ⬜ **Notebook Cell 8: verify batching on real hardware** before trusting it for the grid. The
